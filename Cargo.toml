@@ -1,0 +1,9 @@
+[package]
+name = "ri"
+version = "0.1.0"
+authors = ["Greg Stamper <gastamper@gmail.com>"]
+
+[dependencies]
+reqwest = "0.9.20"
+regex = "1"
+clap = "2.33.0"
