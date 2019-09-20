@@ -7,7 +7,12 @@ extern crate clap;
 use clap::{Arg, App};
 #[macro_use] extern crate log;
 extern crate env_logger;
+extern crate flate2;
 use env_logger::Env;
+use std::io::prelude::*;
+use std::io;
+use flate2::read::GzDecoder;
+
 
 fn exitout(arg: String) {
     error!("{}", arg);
@@ -49,6 +54,13 @@ fn handler(ref mut r: &String) -> reqwest::Response {
     response.unwrap()
 }
 
+fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
+    let mut gz = GzDecoder::new(&bytes[..]);
+    let mut s = String::new();
+    gz.read_to_string(&mut s);
+    info!("gzdecoded {}", s);
+    Ok(s)
+}
 
 fn main() -> Result<(), Error> {
     let matches = App::new("annparse")
@@ -62,16 +74,48 @@ fn main() -> Result<(), Error> {
                     .long("verbose")
                     .help("verbosity level")
                     .multiple(true))
+                    .arg(Arg::with_name("gzip")
+                    .short("g")
+                    .long("gzip")
+                    .help("switch for testing parsing of gzip archives"))
                     .get_matches();
     let verbosity = match matches.occurrences_of("verbose") {
         0 => "info",
         1 => "debug",
         2 | _ => "trace",
     };
+
     // Turn off logging from other packages
     let baseloglevel = ",tokio=info,hyper=info,tokio_reactor=info,reqwest=info,want=info,mio=info";
     env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
-    
+   
+    // Work on parsing mailing list archives
+    if matches.is_present("gzip") {
+        let archiveurl = "https://lists.centos.org/pipermail/centos-announce/2019-August.txt.gz";
+        let mut archiveresp = handler(&archiveurl.to_string());
+        let length = match archiveresp.content_length() {
+            Some(a) => a,
+            None => 0,
+        };
+        info!("Status {}, length {}", archiveresp.status(), length);
+//    let decoded = gzdecode(archiveresp.text()?.as_bytes().to_vec()).unwrap();
+        let mut gzdecoded: Vec<u8> = vec![];
+        archiveresp.copy_to(&mut gzdecoded)?;
+        let decoded = gzdecode(gzdecoded).unwrap();
+//    info!("len {}, data {}", decoded.len(), decoded);
+
+        let decoded_split = decoded.split("Subject:");
+    // Regex to parse CE**-YYYY:1234
+        let subjre = Regex::new(r"([A-Z]{4}-[0-9]{4}:[0-9]{4})").unwrap();
+        for line in decoded_split {
+            let sline = subjre.captures(line);
+            match sline {
+                None => (),
+                Some(a) => info!("Found advisory {}", a.get(1).map_or("", |m| m.as_str())),
+            }
+        }
+    }
+
     let request_url = matches.value_of("url").unwrap_or("");
     if request_url == "" {
         exitout(String::from("No URL specified"));
