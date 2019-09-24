@@ -36,13 +36,14 @@ fn buildline(data: std::collections::HashSet<&str>) {
 fn splitsort(s: &str) -> HashSet<&str> {
     let mut data = HashSet::new();
     // Messages are broadly split by two newlines between architectures, which gives the separate package groups
+    // TODO: support multiple architectures
     for group in s.split("\n\n") {
         if group.contains("x86_64:") {
             for line in group.split("\n") {
-                trace!("Inserting: {}", line);
                 let hashsplit = line.split(" ");
                 for item in hashsplit {
                     if item.ends_with(".rpm") {
+                        trace!("Inserting: {}", line);
                         data.insert(item);
                     }
                 }
@@ -138,18 +139,14 @@ fn main() -> Result<(), Error> {
             None => 0,
         };
         info!("GZIP decoding.  Status {}, message length {}", archiveresp.status(), length);
-//    let decoded = gzdecode(archiveresp.text()?.as_bytes().to_vec()).unwrap();
         let mut gzdecoded: Vec<u8> = vec![];
         archiveresp.copy_to(&mut gzdecoded)?;
         let decoded = gzdecode(gzdecoded).unwrap();
-//    info!("len {}, data {}", decoded.len(), decoded);
 
         let decoded_split = decoded.split("Subject:");
-    // Regex to parse CE**-YYYY:1234
-        let subjre = Regex::new(r"(\]\W)([A-Z]{4}-[0-9]{4}:[0-9]{4})").unwrap();
+        // Regex to parse CE**-YYYY:1234
+        let subjre = Regex::new(r" \[(\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
         for message in decoded_split {
-//            debug!("Message start:\n {}", message);
-//            debug!("Message end");
             let smessage = subjre.captures(message);
             let advisorymatch = match smessage {
                 None => "None",
@@ -158,11 +155,8 @@ fn main() -> Result<(), Error> {
             trace!("Advisory found: {}", advisorymatch);
             if advisorymatch != "None" {
                 if advisorymatch == matches.value_of("advisory").unwrap_or("") {
-                    info!("Advisory matched");
-                    // work on the thing here
-     //               let mut newset = HashSet::new();
                     let mut data = splitsort(&message);
-//                    let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
+                    info!("Advisory matched: {},{}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
                     trace!("Final data: {:#?}", data);
                     buildline(data);       
 
@@ -170,42 +164,23 @@ fn main() -> Result<(), Error> {
             }
         }
     }
-
-    let request_url = matches.value_of("url").unwrap_or("");
-    if request_url == "" {
-        exitout(String::from("No URL specified"));
-        }
+    // Single message passed by URL
+    else {
+        let request_url = matches.value_of("url").unwrap_or("");
+        if request_url == "" {
+            exitout(String::from("No URL specified"));
+            }
 //	let request_url = format!("https://lists.centos.org/pipermail/centos-cr-announce/2019-September/006197.html");
-	info!("URL: {}", request_url);
-	//let mut response = reqwest::get(&request_url.to_string())?;
-	let mut response = handler(&request_url.to_string()); 
+    	info!("URL: {}", request_url);
+	    let mut response = handler(&request_url.to_string()); 
 	
     
-    // Check if HTTP request worked; return status code and URL if failure
-	if ! response.status().is_success() {
-		exitout(format!("Error {} for {}", response.status(), request_url));
-	}
-	let out = response.text()?;
-
-    // Valid list entries take the format:
-    // [...]\n
-    // syncing to the mirrors: (sha256sum Filename)\n
-    // \n
-    // [arch (x86_64, Source, etc)]\n
-    // [sha256sum] [Filename]\n
-    //
-    // [...]\n
-    // \n
-    //
-    // Split entries by two newlines in succession and then check if the current section
-    // is applicable to the architecture supplied.
-
-    buildline(splitsort(&out));
-
-//  Logic for prepending/appending CR repository enabling
-//  if opt.crrepo == true { info!("yum-config-mgr --enablerepo=cr; yum update
-//  {};  yum-config-mgr --disablerepo=cr", finalstr); }
-//  else { info!("yum update {}", finalstr); }
-//  elif opt.pkgonly == true { info!("{}"); }
+        // Check if HTTP request worked; return status code and URL if failure
+    	if ! response.status().is_success() {
+    		exitout(format!("Error {} for {}", response.status(), request_url));
+    	}
+    	let out = response.text()?;
+        buildline(splitsort(&out));
+    }
 	Ok(())
 }
