@@ -24,9 +24,9 @@ fn buildline(data: std::collections::HashSet<&str>) {
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
 	trace!("{:#?}", data);
 	for item in data {
-		let packagename = re.captures(item).unwrap();
-		debug!("Got package: {}", packagename.get(1).map_or("", |m| m.as_str()));
-		newset.insert(packagename.get(1).map_or("", |m| m.as_str()));
+		let packagename = re.captures(item).unwrap().get(1).map_or("", |m| m.as_str());
+		debug!("Got package: {}", packagename);
+		newset.insert(packagename);
 	}
 	let finalstr = newset.into_iter().collect::<Vec<&str>>().join(" ");
 	debug!("Final package list: {}", finalstr);
@@ -34,12 +34,11 @@ fn buildline(data: std::collections::HashSet<&str>) {
 }
 
 fn splitsort(s: &str) -> HashSet<&str> {
-    let arch = Regex::new(r"(^[A-Za-z0-9_]+:$)").unwrap();
     let mut data = HashSet::new();
+    // Messages are broadly split by two newlines between architectures, which gives the separate package groups
     for group in s.split("\n\n") {
-        let mut matched = false;
-        for line in group.split("\n") {
-            if matched == true {
+        if group.contains("x86_64:") {
+            for line in group.split("\n") {
                 trace!("Inserting: {}", line);
                 let hashsplit = line.split(" ");
                 for item in hashsplit {
@@ -47,14 +46,6 @@ fn splitsort(s: &str) -> HashSet<&str> {
                         data.insert(item);
                     }
                 }
-            }
-            let archmatch = match arch.captures(line) {
-                Some(a) => a.get(1).map_or("", |m| m.as_str()),
-                None => "None",
-            };
-            if archmatch == "x86_64:" {
-                debug!("Found x86_64");
-                matched = true;
             }
         }
     }
@@ -208,53 +199,13 @@ fn main() -> Result<(), Error> {
     //
     // Split entries by two newlines in succession and then check if the current section
     // is applicable to the architecture supplied.
-//	let split = out.split("\n\n");
-//	let mut data = HashSet::new();;
 
-    // Regex for architecture
-/*    let arch = Regex::new(r"(^[A-Za-z0-9_]+:\n)").unwrap();	
-	for s in split {
-		let mut matched = false;
-		for line in s.split("\n") {
-			if matched == true { 
-				trace!("Inserting: {}", line);
-				let hashsplit = line.split("  ");
-				for item in hashsplit {
-					if item.ends_with(".rpm") {
-						data.insert(item); 
-					}
-				}
-			}
-            let archmatch = match arch.captures(line) {
-                Some(a) => a.get(1).map_or("", |m| m.as_str()),
-                None => "None",
-            };
-			// Find x86_64 heading and set flag to begin inserting lines into set
-			if archmatch == "x86_64:" { 
-				debug!("Found x86_64");
-				matched = true;
-			}
-		}
-	} */
-    let mut data = splitsort(&out);
-
-	let mut newset = HashSet::new();
-	// Matches only package name assuming no nonconventional naming
-	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
-	trace!("{:#?}", data);
-	for item in data {
-		let packagename = re.captures(item).unwrap();
-		debug!("Got package: {}", packagename.get(1).map_or("", |m| m.as_str()));
-		newset.insert(packagename.get(1).map_or("", |m| m.as_str()));
-	}
-	let finalstr = newset.into_iter().collect::<Vec<&str>>().join(" ");
-	debug!("Final package list: {}", finalstr);
+    buildline(splitsort(&out));
 
 //  Logic for prepending/appending CR repository enabling
 //  if opt.crrepo == true { info!("yum-config-mgr --enablerepo=cr; yum update
 //  {};  yum-config-mgr --disablerepo=cr", finalstr); }
 //  else { info!("yum update {}", finalstr); }
 //  elif opt.pkgonly == true { info!("{}"); }
-	info!("yum-config-mgr --enablerepo=cr; yum update {}; yum-config-mgr --disablerepo=cr", finalstr);
 	Ok(())
 }
