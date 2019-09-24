@@ -13,10 +13,52 @@ use std::io::prelude::*;
 use std::io;
 use flate2::read::GzDecoder;
 
-
 fn exitout(arg: String) {
     error!("{}", arg);
     std::process::exit(1);
+}
+
+fn buildline(data: std::collections::HashSet<&str>) {
+	let mut newset = HashSet::new();
+	// Matches only package name assuming no nonconventional naming
+	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
+	trace!("{:#?}", data);
+	for item in data {
+		let packagename = re.captures(item).unwrap();
+		debug!("Got package: {}", packagename.get(1).map_or("", |m| m.as_str()));
+		newset.insert(packagename.get(1).map_or("", |m| m.as_str()));
+	}
+	let finalstr = newset.into_iter().collect::<Vec<&str>>().join(" ");
+	debug!("Final package list: {}", finalstr);
+    info!("yum-config-mgr --enablerepo=cr; yum update {}; yum-config-mgr --disablerepo=cr", finalstr);
+}
+
+fn splitsort(s: &str) -> HashSet<&str> {
+    let arch = Regex::new(r"(^[A-Za-z0-9_]+:$)").unwrap();
+    let mut data = HashSet::new();
+    for group in s.split("\n\n") {
+        let mut matched = false;
+        for line in group.split("\n") {
+            if matched == true {
+                trace!("Inserting: {}", line);
+                let hashsplit = line.split(" ");
+                for item in hashsplit {
+                    if item.ends_with(".rpm") {
+                        data.insert(item);
+                    }
+                }
+            }
+            let archmatch = match arch.captures(line) {
+                Some(a) => a.get(1).map_or("", |m| m.as_str()),
+                None => "None",
+            };
+            if archmatch == "x86_64:" {
+                debug!("Found x86_64");
+                matched = true;
+            }
+        }
+    }
+    data
 }
 
 fn handler(ref mut r: &String) -> reqwest::Response {
@@ -54,11 +96,12 @@ fn handler(ref mut r: &String) -> reqwest::Response {
     response.unwrap()
 }
 
+
 fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     let mut gz = GzDecoder::new(&bytes[..]);
     let mut s = String::new();
-    gz.read_to_string(&mut s);
-    info!("gzdecoded {}", s);
+    gz.read_to_string(&mut s)?;
+    trace!("gzdecoded {}", s);
     Ok(s)
 }
 
@@ -78,6 +121,11 @@ fn main() -> Result<(), Error> {
                     .short("g")
                     .long("gzip")
                     .help("switch for testing parsing of gzip archives"))
+                    .arg(Arg::with_name("advisory")
+                    .short("a")
+                    .long("advisory")
+                    .help("Advisory to query")
+                    .takes_value(true))
                     .get_matches();
     let verbosity = match matches.occurrences_of("verbose") {
         0 => "info",
@@ -87,6 +135,7 @@ fn main() -> Result<(), Error> {
 
     // Turn off logging from other packages
     let baseloglevel = ",tokio=info,hyper=info,tokio_reactor=info,reqwest=info,want=info,mio=info";
+    // Permit overriding builtin logging via command line
     env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
    
     // Work on parsing mailing list archives
@@ -97,7 +146,7 @@ fn main() -> Result<(), Error> {
             Some(a) => a,
             None => 0,
         };
-        info!("Status {}, length {}", archiveresp.status(), length);
+        info!("GZIP decoding.  Status {}, message length {}", archiveresp.status(), length);
 //    let decoded = gzdecode(archiveresp.text()?.as_bytes().to_vec()).unwrap();
         let mut gzdecoded: Vec<u8> = vec![];
         archiveresp.copy_to(&mut gzdecoded)?;
@@ -106,12 +155,27 @@ fn main() -> Result<(), Error> {
 
         let decoded_split = decoded.split("Subject:");
     // Regex to parse CE**-YYYY:1234
-        let subjre = Regex::new(r"([A-Z]{4}-[0-9]{4}:[0-9]{4})").unwrap();
-        for line in decoded_split {
-            let sline = subjre.captures(line);
-            match sline {
-                None => (),
-                Some(a) => info!("Found advisory {}", a.get(1).map_or("", |m| m.as_str())),
+        let subjre = Regex::new(r"(\]\W)([A-Z]{4}-[0-9]{4}:[0-9]{4})").unwrap();
+        for message in decoded_split {
+//            debug!("Message start:\n {}", message);
+//            debug!("Message end");
+            let smessage = subjre.captures(message);
+            let advisorymatch = match smessage {
+                None => "None",
+                Some(a) => a.get(2).map_or("None", |m| m.as_str()),
+            };
+            trace!("Advisory found: {}", advisorymatch);
+            if advisorymatch != "None" {
+                if advisorymatch == matches.value_of("advisory").unwrap_or("") {
+                    info!("Advisory matched");
+                    // work on the thing here
+     //               let mut newset = HashSet::new();
+                    let mut data = splitsort(&message);
+//                    let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
+                    trace!("Final data: {:#?}", data);
+                    buildline(data);       
+
+                }
             }
         }
     }
@@ -144,9 +208,11 @@ fn main() -> Result<(), Error> {
     //
     // Split entries by two newlines in succession and then check if the current section
     // is applicable to the architecture supplied.
-	let split = out.split("\n\n");
-	let mut data = HashSet::new();;
-	
+//	let split = out.split("\n\n");
+//	let mut data = HashSet::new();;
+
+    // Regex for architecture
+/*    let arch = Regex::new(r"(^[A-Za-z0-9_]+:\n)").unwrap();	
 	for s in split {
 		let mut matched = false;
 		for line in s.split("\n") {
@@ -159,13 +225,19 @@ fn main() -> Result<(), Error> {
 					}
 				}
 			}
+            let archmatch = match arch.captures(line) {
+                Some(a) => a.get(1).map_or("", |m| m.as_str()),
+                None => "None",
+            };
 			// Find x86_64 heading and set flag to begin inserting lines into set
-			if line == "x86_64:" { 
+			if archmatch == "x86_64:" { 
 				debug!("Found x86_64");
 				matched = true;
 			}
 		}
-	}
+	} */
+    let mut data = splitsort(&out);
+
 	let mut newset = HashSet::new();
 	// Matches only package name assuming no nonconventional naming
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
