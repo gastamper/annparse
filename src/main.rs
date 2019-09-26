@@ -12,6 +12,10 @@ use env_logger::Env;
 use std::io::prelude::*;
 use std::io;
 use flate2::read::GzDecoder;
+extern crate select;
+use select::document::Document;
+use select::predicate::Name;
+
 
 fn exitout(arg: String) {
     error!("{}", arg);
@@ -97,6 +101,23 @@ fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     Ok(s)
 }
 
+fn get_archive_list(url: &str) -> Vec<String> {
+    let resp = reqwest::get(url).unwrap();
+    assert!(resp.status().is_success());
+    let mut responsevec: Vec<String> = vec![];
+    // Get only links from downloadable archives
+    Document::from_read(resp)
+        .unwrap()
+        .find(Name("a"))
+        .filter_map(|n| n.attr("href"))
+        .filter(|l| l.contains(".txt.gz"))
+// TODO remove this good neighbor call
+        .filter(|l| l.contains("2019"))
+        .for_each(|x| responsevec.push(url.to_string() + x));
+    responsevec
+}
+
+
 fn main() -> Result<(), Error> {
     let matches = App::new("annparse")
                     .arg(Arg::with_name("url")
@@ -132,18 +153,37 @@ fn main() -> Result<(), Error> {
    
     // Work on parsing mailing list archives
     if matches.is_present("gzip") {
+        let mut archivebundle: Vec<String> = vec![];
+        let mut gzdecoded: Vec<u8> = vec![];
+
+//        let mut announceurl = reqwest::get("https://lists.centos.org/pipermail/centos-announce/").unwrap();
+        let archivelist = get_archive_list("https://lists.centos.org/pipermail/centos-announce/");
+
+        trace!("Found archive links:\r\n{:#?}", archivelist);
+        // Grab all archives, decode them, and dump into vector
+        for link in archivelist {
+            let mut decoded: Vec<u8> = vec![];
+            let mut response = handler(&link.to_string());
+            debug!("Status {} for  {}", response.status(), response.url());
+            response.copy_to(&mut decoded)?;
+            let undecoded = gzdecode(decoded).unwrap();
+            archivebundle.push(undecoded);
+        }
+        println!("{:#?}", archivebundle);
+
+/*
         let archiveurl = "https://lists.centos.org/pipermail/centos-announce/2019-August.txt.gz";
         let mut archiveresp = handler(&archiveurl.to_string());
-        let length = match archiveresp.content_length() {
+/*        let length = match archiveresp.content_length() {
             Some(a) => a,
             None => 0,
         };
-        info!("GZIP decoding.  Status {}, message length {}", archiveresp.status(), length);
-        let mut gzdecoded: Vec<u8> = vec![];
+        info!("GZIP decoding.  Status {}, message length {}", archiveresp.status(), length);*/
         archiveresp.copy_to(&mut gzdecoded)?;
-        let decoded = gzdecode(gzdecoded).unwrap();
-
-        let decoded_split = decoded.split("Subject:");
+        let decoded = gzdecode(gzdecoded).unwrap(); */
+//        let decoded_split = decoded.split("Subject:");
+        let testo = archivebundle.join("");
+        let decoded_split = testo.split("Subject:");
         // Regex to parse CE**-YYYY:1234
         let subjre = Regex::new(r" \[(\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
         for message in decoded_split {
@@ -152,12 +192,11 @@ fn main() -> Result<(), Error> {
                 None => "None",
                 Some(a) => a.get(2).map_or("None", |m| m.as_str()),
             };
-            trace!("Advisory found: {}", advisorymatch);
             if advisorymatch != "None" {
+                trace!("Advisory found: {}", advisorymatch);
                 if advisorymatch == matches.value_of("advisory").unwrap_or("") {
                     let mut data = splitsort(&message);
-                    info!("Advisory matched: {},{}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                    trace!("Final data: {:#?}", data);
+                    debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
                     buildline(data);       
 
                 }
@@ -174,7 +213,6 @@ fn main() -> Result<(), Error> {
     	info!("URL: {}", request_url);
 	    let mut response = handler(&request_url.to_string()); 
 	
-    
         // Check if HTTP request worked; return status code and URL if failure
     	if ! response.status().is_success() {
     		exitout(format!("Error {} for {}", response.status(), request_url));
