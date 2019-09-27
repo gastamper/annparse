@@ -100,7 +100,38 @@ fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     trace!("gzdecoded {}", s);
     Ok(s)
 }
+macro_rules! get_archive_list {
+    ($url:literal) => {{
+        let resp = reqwest::get($url).unwrap();
+        assert!(resp.status().is_success());
+        let mut responsevec: Vec<String> = vec![];
+    // Get only links from downloadable archives
+        Document::from_read(resp)
+            .unwrap()
+            .find(Name("a"))
+            .filter_map(|n| n.attr("href"))
+            .filter(|l| l.contains(".txt.gz"))
+            .filter(|l| l.contains("2019"))
+            .for_each(|x| responsevec.push($url.to_string() + x));
+        responsevec
+    }};
+    ($url:literal, $year:expr) => {{
+        let resp = reqwest::get($url).unwrap();
+        assert!(resp.status().is_success());
+        let mut responsevec: Vec<String> = vec![];
+    // Get only links from downloadable archives
+        Document::from_read(resp)
+            .unwrap()
+            .find(Name("a"))
+            .filter_map(|n| n.attr("href"))
+            .filter(|l| l.contains(".txt.gz"))
+            .filter(|l| l.contains($year))
+            .for_each(|x| responsevec.push($url.to_string() + x));
+        responsevec
+    }};
+}
 
+/*
 fn get_archive_list(url: &str) -> Vec<String> {
     let resp = reqwest::get(url).unwrap();
     assert!(resp.status().is_success());
@@ -112,11 +143,12 @@ fn get_archive_list(url: &str) -> Vec<String> {
         .filter_map(|n| n.attr("href"))
         .filter(|l| l.contains(".txt.gz"))
 // TODO remove this good neighbor call
+// Make this optional via macro
         .filter(|l| l.contains("2019"))
         .for_each(|x| responsevec.push(url.to_string() + x));
     responsevec
 }
-
+*/
 
 fn main() -> Result<(), Error> {
     let matches = App::new("annparse")
@@ -139,6 +171,11 @@ fn main() -> Result<(), Error> {
                     .long("advisory")
                     .help("Advisory to query")
                     .takes_value(true))
+                    .arg(Arg::with_name("year")
+                    .short("y")
+                    .long("year")
+                    .help("Year of archives to query")
+                    .takes_value(true))
                     .get_matches();
     let verbosity = match matches.occurrences_of("verbose") {
         0 => "info",
@@ -154,10 +191,27 @@ fn main() -> Result<(), Error> {
     // Work on parsing mailing list archives
     if matches.is_present("gzip") {
         let mut archivebundle: Vec<String> = vec![];
-        let mut gzdecoded: Vec<u8> = vec![];
-
+//        let mut archivelist: Vec<String> = vec![];
 //        let mut announceurl = reqwest::get("https://lists.centos.org/pipermail/centos-announce/").unwrap();
-        let archivelist = get_archive_list("https://lists.centos.org/pipermail/centos-announce/");
+        let year = matches.value_of("year").unwrap_or("");
+        let yearre = Regex::new(r"^([0-9]{4})$").unwrap();
+            let m = yearre.captures(year);
+            let ym = match m {
+                None => "",
+                Some(a) => a.get(1).map_or("", |m| m.as_str()),
+            };
+        if matches.is_present("year") && ym == "" {
+            error!("Invalid year");
+            std::process::exit(1);
+        }
+        let archivelist = match ym {
+            "" => get_archive_list!("https://lists.centos.org/pipermail/centos-announce/"),
+            str => get_archive_list!("https://lists.centos.org/pipermail/centos-announce/", str),
+        };
+
+// this works
+//        let year = "2019";
+//        let archivelist = get_archive_list!("https://lists.centos.org/pipermail/centos-announce/", year);
 
         trace!("Found archive links:\r\n{:#?}", archivelist);
         // Grab all archives, decode them, and dump into vector
@@ -169,8 +223,11 @@ fn main() -> Result<(), Error> {
             let undecoded = gzdecode(decoded).unwrap();
             archivebundle.push(undecoded);
         }
-        println!("{:#?}", archivebundle);
-
+        trace!("Archive bundle: {:#?}", archivebundle);
+        if archivebundle.len() == 0 {
+            error!("No archives found");
+            std::process::exit(1);
+        }
 /*
         let archiveurl = "https://lists.centos.org/pipermail/centos-announce/2019-August.txt.gz";
         let mut archiveresp = handler(&archiveurl.to_string());
@@ -182,6 +239,7 @@ fn main() -> Result<(), Error> {
         archiveresp.copy_to(&mut gzdecoded)?;
         let decoded = gzdecode(gzdecoded).unwrap(); */
 //        let decoded_split = decoded.split("Subject:");
+        let mut am = false;
         let testo = archivebundle.join("");
         let decoded_split = testo.split("Subject:");
         // Regex to parse CE**-YYYY:1234
@@ -197,10 +255,20 @@ fn main() -> Result<(), Error> {
                 if advisorymatch == matches.value_of("advisory").unwrap_or("") {
                     let mut data = splitsort(&message);
                     debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                    buildline(data);       
+                    buildline(data);
 
                 }
             }
+            am = match advisorymatch {
+                "None" => false,
+                _ => {
+                    if advisorymatch == matches.value_of("advisory").unwrap_or("") { std::process::exit(0); } else { false }
+                },
+            };
+        }
+        if am == false {
+            error!("No matches found.");
+            std::process::exit(1);
         }
     }
     // Single message passed by URL
