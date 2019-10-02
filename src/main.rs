@@ -22,7 +22,7 @@ fn exitout(arg: String) {
     std::process::exit(1);
 }
 
-fn buildline(data: std::collections::HashSet<&str>) {
+fn buildline(data: std::collections::HashSet<&str>, cr: bool) {
 	let mut newset = HashSet::new();
 	// Matches only package name assuming no nonconventional naming
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
@@ -34,7 +34,10 @@ fn buildline(data: std::collections::HashSet<&str>) {
 	}
 	let finalstr = newset.into_iter().collect::<Vec<&str>>().join(" ");
 	debug!("Final package list: {}", finalstr);
-    info!("yum-config-mgr --enablerepo=cr; yum update {}; yum-config-mgr --disablerepo=cr", finalstr);
+    match cr { 
+        true => info!("yum-config-mgr --enablerepo=cr; yum update {}; yum-config-mgr --disablerepo=cr", finalstr),
+        false => info!("yum update {}", finalstr),
+    }
 }
 
 fn splitsort(s: &str) -> HashSet<&str> {
@@ -263,7 +266,7 @@ fn main() -> Result<(), Error> {
                 if advisorymatch == matches.value_of("advisory").unwrap_or("") {
                     let mut data = splitsort(&message);
                     debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                    buildline(data);
+                    buildline(data, matches.is_present("cr"));
 
                 }
             }
@@ -294,7 +297,7 @@ fn main() -> Result<(), Error> {
     		exitout(format!("Error {} for {}", response.status(), request_url));
     	}
     	let out = response.text()?;
-        buildline(splitsort(&out));
+        buildline(splitsort(&out), matches.is_present("cr"));
     }
 	Ok(())
 }
