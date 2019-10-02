@@ -101,7 +101,7 @@ fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     Ok(s)
 }
 macro_rules! get_archive_list {
-    ($url:literal) => {{
+    ($url:expr) => {{
         let resp = reqwest::get($url).unwrap();
         assert!(resp.status().is_success());
         let mut responsevec: Vec<String> = vec![];
@@ -115,7 +115,7 @@ macro_rules! get_archive_list {
             .for_each(|x| responsevec.push($url.to_string() + x));
         responsevec
     }};
-    ($url:literal, $year:expr) => {{
+    ($url:expr, $year:expr) => {{
         let resp = reqwest::get($url).unwrap();
         assert!(resp.status().is_success());
         let mut responsevec: Vec<String> = vec![];
@@ -176,6 +176,10 @@ fn main() -> Result<(), Error> {
                     .long("year")
                     .help("Year of archives to query")
                     .takes_value(true))
+                    .arg(Arg::with_name("cr")
+                    .short("c")
+                    .long("cr")
+                    .help("Use CR-announce instead of CentOS-aannounce"))
                     .get_matches();
     let verbosity = match matches.occurrences_of("verbose") {
         0 => "info",
@@ -204,9 +208,13 @@ fn main() -> Result<(), Error> {
             error!("Invalid year");
             std::process::exit(1);
         }
+        let addr = match matches.is_present("cr") {
+            true => "https://lists.centos.org/pipermail/centos-cr-announce/",
+            false => "https://lists.centos.org/pipermail/centos-announce/",
+        };
         let archivelist = match ym {
-            "" => get_archive_list!("https://lists.centos.org/pipermail/centos-announce/"),
-            str => get_archive_list!("https://lists.centos.org/pipermail/centos-announce/", str),
+            "" => get_archive_list!(addr),
+            str => get_archive_list!(addr, str),
         };
 
 // this works
@@ -243,7 +251,7 @@ fn main() -> Result<(), Error> {
         let testo = archivebundle.join("");
         let decoded_split = testo.split("Subject:");
         // Regex to parse CE**-YYYY:1234
-        let subjre = Regex::new(r" \[(\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
+        let subjre = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
         for message in decoded_split {
             let smessage = subjre.captures(message);
             let advisorymatch = match smessage {
