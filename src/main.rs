@@ -230,9 +230,11 @@ fn main() -> Result<(), Error> {
             let mut decoded: Vec<u8> = vec![];
             let mut response = handler(&link.to_string());
             debug!("Status {} for  {}", response.status(), response.url());
-            response.copy_to(&mut decoded)?;
-            let undecoded = gzdecode(decoded).unwrap();
-            archivebundle.push(undecoded);
+            if response.status().as_u16() == 200 {
+                response.copy_to(&mut decoded)?;
+                let undecoded = gzdecode(decoded).unwrap();
+                archivebundle.push(undecoded);
+            }
         }
         trace!("Archive bundle: {:#?}", archivebundle);
         if archivebundle.len() == 0 {
