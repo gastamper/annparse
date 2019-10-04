@@ -197,6 +197,10 @@ fn main() -> Result<(), Error> {
    
     // Work on parsing mailing list archives
     if matches.is_present("gzip") {
+        if !matches.is_present("advisory") {
+            error!("No advisory specified.");
+            std::process::exit(1);
+        }
         let mut archivebundle: Vec<String> = vec![];
 //        let mut archivelist: Vec<String> = vec![];
 //        let mut announceurl = reqwest::get("https://lists.centos.org/pipermail/centos-announce/").unwrap();
