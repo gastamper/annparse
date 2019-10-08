@@ -16,6 +16,7 @@ use flate2::read::GzDecoder;
 extern crate select;
 use select::document::Document;
 use select::predicate::Name;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 
 fn exitout(arg: String) {
@@ -120,12 +121,14 @@ macro_rules! get_archive_list {
         assert!(resp.status().is_success());
         let mut responsevec: Vec<String> = vec![];
     // Get only links from downloadable archives
+    // Check only current year unless year is specified
+        let year = ((SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() / 31557600000) + 1970).to_string();
         Document::from_read(resp)
             .unwrap()
             .find(Name("a"))
             .filter_map(|n| n.attr("href"))
             .filter(|l| l.contains(".txt.gz") || l.contains(".txt"))
-            .filter(|l| l.contains("2019"))
+            .filter(|l| l.contains(&year))
             .for_each(|x| responsevec.push($url.to_string() + x));
         responsevec
     }};
