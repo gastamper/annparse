@@ -10,6 +10,7 @@ extern crate env_logger;
 extern crate flate2;
 use env_logger::Env;
 use std::io::prelude::*;
+use std::str::from_utf8;
 use std::io;
 use flate2::read::GzDecoder;
 extern crate select;
@@ -99,9 +100,19 @@ fn handler(ref mut r: &String) -> reqwest::Response {
 fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     let mut gz = GzDecoder::new(&bytes[..]);
     let mut s = String::new();
-    gz.read_to_string(&mut s)?;
-    trace!("gzdecoded {}", s);
-    Ok(s)
+//    gz.read_to_string(&mut s)?;
+    match gz.read_to_string(&mut s) {
+        Ok(a) => 
+            {
+                trace!("GZdecoded {}", a);
+                Ok(s)
+            },
+        Err(e) => 
+            { 
+                trace!("Text message: {}", e);
+                Ok(from_utf8(&bytes).unwrap().to_string())
+            },
+    }
 }
 macro_rules! get_archive_list {
     ($url:expr) => {{
@@ -113,7 +124,7 @@ macro_rules! get_archive_list {
             .unwrap()
             .find(Name("a"))
             .filter_map(|n| n.attr("href"))
-            .filter(|l| l.contains(".txt.gz"))
+            .filter(|l| l.contains(".txt.gz") || l.contains(".txt"))
             .filter(|l| l.contains("2019"))
             .for_each(|x| responsevec.push($url.to_string() + x));
         responsevec
@@ -127,31 +138,12 @@ macro_rules! get_archive_list {
             .unwrap()
             .find(Name("a"))
             .filter_map(|n| n.attr("href"))
-            .filter(|l| l.contains(".txt.gz"))
+            .filter(|l| l.contains(".txt.gz") || l.contains(".txt"))
             .filter(|l| l.contains($year))
             .for_each(|x| responsevec.push($url.to_string() + x));
         responsevec
     }};
 }
-
-/*
-fn get_archive_list(url: &str) -> Vec<String> {
-    let resp = reqwest::get(url).unwrap();
-    assert!(resp.status().is_success());
-    let mut responsevec: Vec<String> = vec![];
-    // Get only links from downloadable archives
-    Document::from_read(resp)
-        .unwrap()
-        .find(Name("a"))
-        .filter_map(|n| n.attr("href"))
-        .filter(|l| l.contains(".txt.gz"))
-// TODO remove this good neighbor call
-// Make this optional via macro
-        .filter(|l| l.contains("2019"))
-        .for_each(|x| responsevec.push(url.to_string() + x));
-    responsevec
-}
-*/
 
 fn main() -> Result<(), Error> {
     let matches = App::new("annparse")
