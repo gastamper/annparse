@@ -160,10 +160,10 @@ fn main() -> Result<(), Error> {
                     .long("verbose")
                     .help("verbosity level")
                     .multiple(true))
-                    .arg(Arg::with_name("gzip")
+/*                    .arg(Arg::with_name("gzip")
                     .short("g")
                     .long("gzip")
-                    .help("switch for testing parsing of gzip archives"))
+                    .help("switch for testing parsing of gzip archives")) */
                     .arg(Arg::with_name("advisory")
                     .short("a")
                     .long("advisory")
@@ -191,7 +191,7 @@ fn main() -> Result<(), Error> {
     env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
    
     // Work on parsing mailing list archives
-    if matches.is_present("gzip") {
+    if !matches.is_present("url") {
         if !matches.is_present("advisory") {
             error!("No advisory specified.");
             std::process::exit(1);
