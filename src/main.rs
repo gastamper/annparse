@@ -188,7 +188,16 @@ fn main() -> Result<(), Error> {
     // Turn off logging from other packages
     let baseloglevel = ",tokio=info,hyper=info,tokio_reactor=info,reqwest=info,want=info,mio=info,html5ever=info";
     // Permit overriding builtin logging via command line
+    // if level is info, strip logging
+    if verbosity == "info" {
+        use log::LevelFilter;
+        let mut builder = env_logger::Builder::from_default_env();
+        builder.format(|buf, record| writeln!(buf, "{}", record.args()))
+            .filter(None, LevelFilter::Info).init();
+    }
+    else {
     env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
+    }
    
     // Work on parsing mailing list archives
     if !matches.is_present("url") {
