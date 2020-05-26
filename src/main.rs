@@ -29,6 +29,9 @@ fn buildline(data: std::collections::HashSet<&str>) {
 	// Matches only package name assuming no nonconventional naming
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
 	trace!("buildline: {:#?}", data);
+    if data.len() == 0 { 
+        exitout(String::from("Advisory appears to be empty."));
+    }
 	for item in data {
 		let packagename = re.captures(item).unwrap().get(1).map_or("", |m| m.as_str());
 		debug!("Got package: {}", packagename);
