@@ -16,7 +16,6 @@ use flate2::read::GzDecoder;
 extern crate select;
 use select::document::Document;
 use select::predicate::Name;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 
 fn exitout(arg: String) {
@@ -24,11 +23,12 @@ fn exitout(arg: String) {
     std::process::exit(1);
 }
 
-fn buildline(data: std::collections::HashSet<&str>, cr: bool) {
+// Build final output (package list) from a mailing list entry
+fn buildline(data: std::collections::HashSet<&str>) {
 	let mut newset = HashSet::new();
 	// Matches only package name assuming no nonconventional naming
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
-	trace!("{:#?}", data);
+	trace!("buildline: {:#?}", data);
 	for item in data {
 		let packagename = re.captures(item).unwrap().get(1).map_or("", |m| m.as_str());
 		debug!("Got package: {}", packagename);
@@ -36,10 +36,7 @@ fn buildline(data: std::collections::HashSet<&str>, cr: bool) {
 	}
 	let finalstr = newset.into_iter().collect::<Vec<&str>>().join(" ");
 	debug!("Final package list: {}", finalstr);
-    match cr { 
-        true => info!("yum-config-mgr --enablerepo=cr; yum update {}; yum-config-mgr --disablerepo=cr", finalstr),
-        false => info!("yum update {}", finalstr),
-    }
+    info!("{}", finalstr)
 }
 
 fn splitsort(s: &str) -> HashSet<&str> {
@@ -52,7 +49,7 @@ fn splitsort(s: &str) -> HashSet<&str> {
                 let hashsplit = line.split(" ");
                 for item in hashsplit {
                     if item.ends_with(".rpm") {
-                        trace!("Inserting: {}", line);
+                        trace!("splitsort: Inserting: {}", line);
                         data.insert(item);
                     }
                 }
@@ -62,6 +59,7 @@ fn splitsort(s: &str) -> HashSet<&str> {
     data
 }
 
+// Web handler using reqwest
 fn handler(ref mut r: &String) -> reqwest::Response {
     let response = reqwest::get(*r);
     if let Err(e) = &response {
@@ -97,7 +95,7 @@ fn handler(ref mut r: &String) -> reqwest::Response {
     response.unwrap()
 }
 
-
+// Function to un-gzip any response
 fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     let mut gz = GzDecoder::new(&bytes[..]);
     let mut s = String::new();
@@ -115,7 +113,10 @@ fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
             },
     }
 }
+
+// Macro to pull a list of archives from the mailing list
 macro_rules! get_archive_list {
+    // This branch is no longer used now that year is parsed from advisory
     ($url:expr) => {{
         let resp = reqwest::get($url).unwrap();
         assert!(resp.status().is_success());
@@ -160,19 +161,10 @@ fn main() -> Result<(), Error> {
                     .long("verbose")
                     .help("verbosity level")
                     .multiple(true))
-/*                    .arg(Arg::with_name("gzip")
-                    .short("g")
-                    .long("gzip")
-                    .help("switch for testing parsing of gzip archives")) */
                     .arg(Arg::with_name("advisory")
                     .short("a")
                     .long("advisory")
                     .help("Advisory to query")
-                    .takes_value(true))
-                    .arg(Arg::with_name("year")
-                    .short("y")
-                    .long("year")
-                    .help("Year of archives to query")
                     .takes_value(true))
                     .arg(Arg::with_name("cr")
                     .short("c")
@@ -187,8 +179,7 @@ fn main() -> Result<(), Error> {
 
     // Turn off logging from other packages
     let baseloglevel = ",tokio=info,hyper=info,tokio_reactor=info,reqwest=info,want=info,mio=info,html5ever=info";
-    // Permit overriding builtin logging via command line
-    // if level is info, strip logging
+    // If level is "info", strip logging so output is easily passed elsewhere
     if verbosity == "info" {
         use log::LevelFilter;
         let mut builder = env_logger::Builder::from_default_env();
@@ -196,74 +187,79 @@ fn main() -> Result<(), Error> {
             .filter(None, LevelFilter::Info).init();
     }
     else {
+    // Permit overriding builtin logging via command line
     env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
     }
    
-    // Work on parsing mailing list archives
+    // If no URL passed, advisory is required
     if !matches.is_present("url") {
         if !matches.is_present("advisory") {
             error!("No advisory specified.");
             std::process::exit(1);
         }
         let mut archivebundle: Vec<String> = vec![];
-//        let mut archivelist: Vec<String> = vec![];
-//        let mut announceurl = reqwest::get("https://lists.centos.org/pipermail/centos-announce/").unwrap();
+        
+        // To be removed: manual passing of year
         let year = matches.value_of("year").unwrap_or("");
         let yearre = Regex::new(r"^([0-9]{4})$").unwrap();
-            let m = yearre.captures(year);
-            let ym = match m {
-                None => "",
-                Some(a) => a.get(1).map_or("", |m| m.as_str()),
-            };
+        let m = yearre.captures(year);
+        let ym = match m {
+            None => "",
+            Some(a) => a.get(1).map_or("", |m| m.as_str()),
+        };
         if matches.is_present("year") && ym == "" {
             error!("Invalid year");
             std::process::exit(1);
         }
+
+        // Determine which list to use
         let addr = match matches.is_present("cr") {
             true => "https://lists.centos.org/pipermail/centos-cr-announce/",
             false => "https://lists.centos.org/pipermail/centos-announce/",
         };
-        let archivelist = match ym {
-            "" => get_archive_list!(addr),
-            str => get_archive_list!(addr, str),
-        };
 
-// this works
-//        let year = "2019";
-//        let archivelist = get_archive_list!("https://lists.centos.org/pipermail/centos-announce/", year);
+
+        // Parse year from advisory
+        let adv = matches.value_of("advisory").unwrap_or("");
+        let advre = Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$").unwrap();
+        let advyear = advre.captures(adv);
+        let a = match advyear {
+            None => "",
+            Some(a) => a.get(1).map_or("", |m| m.as_str()),
+        };
+        if a == "" {
+            error!("Couldn't parse year from advisory.");
+            std::process::exit(1);
+        }
+
+        // Query mailing list for advisory
+        let archivelist = get_archive_list!(addr, a);
 
         trace!("Found archive links:\r\n{:#?}", archivelist);
         // Grab all archives, decode them, and dump into vector
         for link in archivelist {
             let mut decoded: Vec<u8> = vec![];
             let mut response = handler(&link.to_string());
-            debug!("Status {} for  {}", response.status(), response.url());
+            debug!("Status {} for {}", response.status(), response.url());
             if response.status().as_u16() == 200 {
                 response.copy_to(&mut decoded)?;
                 let undecoded = gzdecode(decoded).unwrap();
                 archivebundle.push(undecoded);
             }
         }
-        trace!("Archive bundle: {:#?}", archivebundle);
+       
+        trace!("Archive bundle found, length {}", archivebundle[0].len());
+        // Uncomment to see full data from get_archive_list
+        //trace!("Archive bundle: {:#?}", archivebundle);
         if archivebundle.len() == 0 {
             error!("No archives found");
             std::process::exit(1);
         }
-/*
-        let archiveurl = "https://lists.centos.org/pipermail/centos-announce/2019-August.txt.gz";
-        let mut archiveresp = handler(&archiveurl.to_string());
-/*        let length = match archiveresp.content_length() {
-            Some(a) => a,
-            None => 0,
-        };
-        info!("GZIP decoding.  Status {}, message length {}", archiveresp.status(), length);*/
-        archiveresp.copy_to(&mut gzdecoded)?;
-        let decoded = gzdecode(gzdecoded).unwrap(); */
-//        let decoded_split = decoded.split("Subject:");
+        
         let mut am = false;
         let testo = archivebundle.join("");
         let decoded_split = testo.split("Subject:");
-        // Regex to parse CE**-YYYY:1234
+        // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
         let subjre = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
         for message in decoded_split {
             let smessage = subjre.captures(message);
@@ -274,9 +270,9 @@ fn main() -> Result<(), Error> {
             if advisorymatch != "None" {
                 trace!("Advisory found: {}", advisorymatch);
                 if advisorymatch == matches.value_of("advisory").unwrap_or("") {
-                    let mut data = splitsort(&message);
+                    let data = splitsort(&message);
                     debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                    buildline(data, matches.is_present("cr"));
+                    buildline(data);
 
                 }
             }
@@ -307,7 +303,7 @@ fn main() -> Result<(), Error> {
     		exitout(format!("Error {} for {}", response.status(), request_url));
     	}
     	let out = response.text()?;
-        buildline(splitsort(&out), matches.is_present("cr"));
+        buildline(splitsort(&out));
     }
 	Ok(())
 }
