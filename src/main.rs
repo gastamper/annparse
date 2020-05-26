@@ -200,21 +200,7 @@ fn main() -> Result<(), Error> {
             error!("No advisory specified.");
             std::process::exit(1);
         }
-        let mut archivebundle: Vec<String> = vec![];
         
-        // To be removed: manual passing of year
-        let year = matches.value_of("year").unwrap_or("");
-        let yearre = Regex::new(r"^([0-9]{4})$").unwrap();
-        let m = yearre.captures(year);
-        let ym = match m {
-            None => "",
-            Some(a) => a.get(1).map_or("", |m| m.as_str()),
-        };
-        if matches.is_present("year") && ym == "" {
-            error!("Invalid year");
-            std::process::exit(1);
-        }
-
         // Determine which list to use
         let addr = match matches.is_present("cr") {
             true => "https://lists.centos.org/pipermail/centos-cr-announce/",
@@ -223,10 +209,11 @@ fn main() -> Result<(), Error> {
 
 
         // Parse year from advisory
-        let adv = matches.value_of("advisory").unwrap_or("");
-        let advre = Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$").unwrap();
-        let advyear = advre.captures(adv);
-        let a = match advyear {
+        let a = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
+                .unwrap()
+                .captures(matches.value_of("advisory")
+                .unwrap_or(""))      
+        {
             None => "",
             Some(a) => a.get(1).map_or("", |m| m.as_str()),
         };
@@ -237,6 +224,9 @@ fn main() -> Result<(), Error> {
 
         // Query mailing list for advisory
         let archivelist = get_archive_list!(addr, a);
+
+        // Data pulled from archivelist
+        let mut archivebundle: Vec<String> = vec![];
 
         trace!("Found archive links:\r\n{:#?}", archivelist);
         // Grab all archives, decode them, and dump into vector
@@ -260,8 +250,8 @@ fn main() -> Result<(), Error> {
         }
         
         let mut am = false;
-        let testo = archivebundle.join("");
-        let decoded_split = testo.split("Subject:");
+        let joinedbundle = archivebundle.join("");
+        let decoded_split = joinedbundle.split("Subject:");
         // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
         let subjre = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
         for message in decoded_split {
