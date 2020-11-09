@@ -1,10 +1,10 @@
 # annparse
- Parser to generate yum update commands from the CentOS announce mailing lists
+Parser to generate yum update commands from the CentOS announce mailing lists
 
 # What and why?
 This tool was created so that requests from security (Nessus scans, generally) could be easily translated into package lists 
-without having to manually reference the CentOS mailings lists.  Simply plug in an advisory (and optionally, a year) and 
-annparse will provide you a list of packages referenced in the advisory.
+without having to manually reference the CentOS mailings lists.  Simply plug in an advisory and annparse will provide you a 
+list of packages referenced in the advisory.
 
 # Limitations
 * Presently only checks x86_64 but could be easily expanded to support other architectures/SRPMs/whatever else is included 
@@ -12,10 +12,13 @@ in release emails.
 * Requires manually passing year for older releases.
 
 # How do I use it?
-Just passs an advisory, and optionally a year, and annparse will provide you the `yum update` command to run:
-> $annparse -a CESA-2019:1619 -y 2019  
-> [2020-01-13T15:36:21Z INFO  annparse] yum update vim-filesystem vim-minimal vim-enhanced vim-common vim-X11
+Run `annparse --help` for a complete list of syntax options.
 
-You can also run it against the CR repository, in which case commands to enable/disable the repository will be included:
->$ annparse -c -a CEBA-2013:0576 -y 2013  
->[2020-01-13T15:43:11Z INFO  annparse] yum-config-mgr --enablerepo=cr; yum update piranha; yum-config-mgr --disablerepo=cr
+Alternatively there are two basic modes of operation: by advisory or by URL.  Most users will use advisory mode:
+> $ target/debug/annparse -c -a CESA-2020:4076
+> nss-util nss-util-devel nss-softokn-devel nss-softokn nss-softokn-freebl nss-softokn-freebl-devel nss-tools nss-sysinit nss nss-pkcs11-devel nss-devel nspr nspr-devel
+
+URL mode takes the URL of a specific mailing list entry and provides the affected packages:
+> $ target/debug/annparse -u https://lists.centos.org/pipermail/centos-cr-announce/2020-November/012868.html
+> URL: https://lists.centos.org/pipermail/centos-cr-announce/2020-November/012868.html
+> firefox
