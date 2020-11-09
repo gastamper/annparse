@@ -374,7 +374,7 @@ fn main() {
     	}
     	//let out = response.text()?;
     	let out = response.text().unwrap();
-        buildline(splitsort(&out));
+        info!("{}", buildline(splitsort(&out)));
     }
     std::process::exit(0);
 }
