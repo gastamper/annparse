@@ -202,143 +202,120 @@ fn main() {
     env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
     }
    
-    // If no URL passed, advisory is required
-    if !matches.is_present("url") {
-        if !matches.is_present("advisory") {
-            error!("No advisory specified.");
-            std::process::exit(1);
-        }
+    if !matches.is_present("advisory") {
+        error!("No advisory specified.");
+        std::process::exit(1);
+    }
         
 
-        let mut archivebundle: Vec<String> = vec![];
+    let mut archivebundle: Vec<String> = vec![];
 
-        // If in offline mode
-        if matches.is_present("offline") {
-            // Get list of items in cache
-            let dir = match fs::read_dir("./cache") {
+    // If in offline mode
+    if matches.is_present("offline") {
+        // Get list of items in cache
+        let dir = match fs::read_dir("./cache") {
+            Err(e) => {error!("Error reading cache: {}", e); std::process::exit(e.raw_os_error().unwrap())},
+            Ok(items) => items
+        };
+
+        // Set cache so that entries can be pushed into it
+        for entry in dir {
+            // Don't see how this could ever fail, famous last words
+            let item = match entry {
                 Err(e) => {error!("Error reading cache: {}", e); std::process::exit(e.raw_os_error().unwrap())},
-                Ok(items) => items
+                // Item(n) is of type DirEntry
+                Ok(n) => n
             };
-
-            // Set cache so that entries can be pushed into it
-            for entry in dir {
-                // Don't see how this could ever fail, famous last words
-                let item = match entry {
-                    Err(e) => {error!("Error reading cache: {}", e); std::process::exit(e.raw_os_error().unwrap())},
-                    // Item(n) is of type DirEntry
-                    Ok(n) => n
-                };
-                // Try to read individual entry into a string so it can be push'd
-                let s = match fs::read_to_string(item.path()) {
-                    Err(e) => {error!("Error reading cache item: {:#?}: {}", item.path(), e); 
-                                std::process::exit(e.raw_os_error().unwrap_or(127))},
-                    Ok(n) => n
-                };
-                archivebundle.push(s);
-                trace!("{:#?}", item);
-            }
-            // Number of cache entries read = vector.len()
-            trace!("Cache length: {:#?}", archivebundle.len());
+            // Try to read individual entry into a string so it can be push'd
+            let s = match fs::read_to_string(item.path()) {
+                Err(e) => {error!("Error reading cache item: {:#?}: {}", item.path(), e); 
+                            std::process::exit(e.raw_os_error().unwrap_or(127))},
+                Ok(n) => n
+            };
+            archivebundle.push(s);
+            trace!("{:#?}", item);
         }
+        // Number of cache entries read = vector.len()
+        trace!("Cache length: {:#?}", archivebundle.len());
+    }
 
-        // Determine which list to use
-        let addr = match matches.is_present("cr") {
-            true => "https://lists.centos.org/pipermail/centos-cr-announce/",
-            false => "https://lists.centos.org/pipermail/centos-announce/",
-        };
+    // Determine which list to use
+    let addr = match matches.is_present("cr") {
+        true => "https://lists.centos.org/pipermail/centos-cr-announce/",
+        false => "https://lists.centos.org/pipermail/centos-announce/",
+    };
 
 
-        // Parse year from advisory
-        let a = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
-                .unwrap()
-                .captures(matches.value_of("advisory")
-                .unwrap_or(""))      
-        {
-            None => "",
-            Some(a) => a.get(1).map_or("", |m| m.as_str()),
-        };
+    // Parse year from advisory
+    let a = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
+            .unwrap()
+            .captures(matches.value_of("advisory")
+            .unwrap_or(""))      
+    {
+        None => "",
+        Some(a) => a.get(1).map_or("", |m| m.as_str()),
+    };
 
-        if a == "" {
-            error!("Couldn't parse year from advisory.");
-            std::process::exit(1);
-        }
+    if a == "" {
+        error!("Couldn't parse year from advisory.");
+        std::process::exit(1);
+    }
 
-        if !matches.is_present("offline") {
-            // Query mailing list for advisory
-            let archivelist = get_archive_list!(addr, a);
-
-            // Data pulled from archivelist
-
-            trace!("Found archive links:\r\n{:#?}", archivelist);
-            // Grab all archives, decode them, and dump into vector
-            for link in archivelist {
-                let mut decoded: Vec<u8> = vec![];
-                let mut response = handler(&link.to_string());
-                debug!("Status {} for {}", response.status(), response.url());
-                if response.status().as_u16() == 200 {
-                    //response.copy_to(&mut decoded)?;
-                    response.copy_to(&mut decoded).unwrap();
-                    let undecoded = gzdecode(decoded).unwrap();
-                    archivebundle.push(undecoded);
-                }
+    if !matches.is_present("offline") {
+        // Query mailing list for advisory
+        let archivelist = get_archive_list!(addr, a);
+        // Data pulled from archivelist
+        trace!("Found archive links:\r\n{:#?}", archivelist);
+        // Grab all archives, decode them, and dump into vector
+        for link in archivelist {
+            let mut decoded: Vec<u8> = vec![];
+            let mut response = handler(&link.to_string());
+            debug!("Status {} for {}", response.status(), response.url());
+            if response.status().as_u16() == 200 {
+                //response.copy_to(&mut decoded)?;
+                response.copy_to(&mut decoded).unwrap();
+                let undecoded = gzdecode(decoded).unwrap();
+                archivebundle.push(undecoded);
             }
         }
+    }
 
-        trace!("Archive bundle found, length {}", archivebundle[0].len());
-        // Uncomment to see full data from get_archive_list
-        //trace!("Archive bundle: {:#?}", archivebundle);
-        if archivebundle.len() == 0 {
-            error!("No archives found");
-            std::process::exit(1);
-        }
+    trace!("Archive bundle found, length {}", archivebundle[0].len());
+    // Uncomment to see full data from get_archive_list
+    //trace!("Archive bundle: {:#?}", archivebundle);
+    if archivebundle.len() == 0 {
+        error!("No archives found");
+        std::process::exit(1);
+    }
       
-        let mut count = 0;
-        let mut buf = String::new();
-        let joinedbundle = archivebundle.join("");
-        let decoded_split = joinedbundle.split("Subject:");
-        // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
-        let subjre = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
-        for message in decoded_split {
-            let smessage = subjre.captures(message);
-            let advisorymatch = match smessage {
-                None => "None",
-                Some(a) => a.get(2).map_or("None", |m| m.as_str()),
-            };
-            if advisorymatch != "None" {
-                trace!("Advisory found: {}", advisorymatch);
-                if advisorymatch == matches.value_of("advisory").unwrap_or("") {
-                    let data = splitsort(&message);
-                    debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                    buf.insert_str(0, &buildline(data));
-                    count += 1;
-
-                }
+    let mut count = 0;
+    let mut buf = String::new();
+    let joinedbundle = archivebundle.join("");
+    let decoded_split = joinedbundle.split("Subject:");
+    // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
+    let subjre = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
+    for message in decoded_split {
+        let smessage = subjre.captures(message);
+        let advisorymatch = match smessage {
+            None => "None",
+            Some(a) => a.get(2).map_or("None", |m| m.as_str()),
+        };
+        if advisorymatch != "None" {
+            trace!("Advisory found: {}", advisorymatch);
+            if advisorymatch == matches.value_of("advisory").unwrap_or("") {
+                let data = splitsort(&message);
+                debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
+                buf.insert_str(0, &buildline(data));
+                count += 1;
             }
         }
-        if count == 0 {
-            error!("No matches found.");
-            std::process::exit(1);
-        }
-        else {
-            info!("{}", buf);
-            std::process::exit(0);
-        }
     }
-    // Single message passed by URL
+    if count == 0 {
+        error!("No matches found.");
+        std::process::exit(1);
+    }
     else {
-        let request_url = matches.value_of("url").unwrap_or("");
-        if request_url == "" {
-            exitout(String::from("No URL specified"));
-            }
-    	info!("URL: {}", request_url);
-	    let mut response = handler(&request_url.to_string()); 
-	
-        // Check if HTTP request worked; return status code and URL if failure
-    	if ! response.status().is_success() {
-    		exitout(format!("Error {} for {}", response.status(), request_url));
-    	}
-    	let out = response.text().unwrap();
-        info!("{}", buildline(splitsort(&out)));
+        info!("{}", buf);
+        std::process::exit(0);
     }
-    std::process::exit(0);
 }
