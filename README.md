@@ -15,10 +15,10 @@ in release emails.
 Run `annparse --help` for a complete list of syntax options.
 
 Alternatively there are two basic modes of operation: by advisory or by URL.  Most users will use advisory mode:
-> $ target/debug/annparse -c -a CESA-2020:4076
+> $ target/debug/annparse -c -a CESA-2020:4076  
 > nss-util nss-util-devel nss-softokn-devel nss-softokn nss-softokn-freebl nss-softokn-freebl-devel nss-tools nss-sysinit nss nss-pkcs11-devel nss-devel nspr nspr-devel
 
 URL mode takes the URL of a specific mailing list entry and provides the affected packages:
-> $ target/debug/annparse -u https://lists.centos.org/pipermail/centos-cr-announce/2020-November/012868.html
-> URL: https://lists.centos.org/pipermail/centos-cr-announce/2020-November/012868.html
+> $ target/debug/annparse -u https://lists.centos.org/pipermail/centos-cr-announce/2020-November/012868.html  
+> URL: https://lists.centos.org/pipermail/centos-cr-announce/2020-November/012868.html  
 > firefox
