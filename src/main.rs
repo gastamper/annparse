@@ -1,5 +1,6 @@
 extern crate reqwest;
-use reqwest::Error;
+use std::error::Error;
+//use reqwest::Error;
 use std::collections::HashSet;
 extern crate regex;
 use regex::Regex;
@@ -17,6 +18,8 @@ extern crate select;
 use select::document::Document;
 use select::predicate::Name;
 
+// new stuff
+use std::fs;
 
 fn exitout(arg: String) {
     error!("{}", arg);
@@ -24,7 +27,7 @@ fn exitout(arg: String) {
 }
 
 // Build final output (package list) from a mailing list entry
-fn buildline(data: std::collections::HashSet<&str>) {
+fn buildline(data: std::collections::HashSet<&str>) -> String{
 	let mut newset = HashSet::new();
 	// Matches only package name assuming no nonconventional naming
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
@@ -39,7 +42,8 @@ fn buildline(data: std::collections::HashSet<&str>) {
 	}
 	let finalstr = newset.into_iter().collect::<Vec<&str>>().join(" ");
 	debug!("Final package list: {}", finalstr);
-    info!("{}", finalstr)
+    // Pad end in case another advisory follows
+    String::from(finalstr + " ")
 }
 
 fn splitsort(s: &str) -> HashSet<&str> {
@@ -152,7 +156,9 @@ macro_rules! get_archive_list {
     }};
 }
 
-fn main() -> Result<(), Error> {
+
+//fn main() -> Result<(),dyn Error> {
+fn main() {
     let matches = App::new("annparse")
                     .arg(Arg::with_name("url")
                     .short("u")
@@ -173,6 +179,10 @@ fn main() -> Result<(), Error> {
                     .short("c")
                     .long("cr")
                     .help("Use CR-announce instead of CentOS-aannounce"))
+                    .arg(Arg::with_name("offline")
+                    .short("o")
+                    .long("offline")
+                    .help("Offline mode (use local cache directory ./cache for archives)"))
                     .get_matches();
     let verbosity = match matches.occurrences_of("verbose") {
         0 => "info",
@@ -201,6 +211,61 @@ fn main() -> Result<(), Error> {
             std::process::exit(1);
         }
         
+// TODO: filesystem work
+/*        use std::fs;
+        let path = std::path::Path::new("./2020-May.txt");
+        let display = path.display();
+
+        let mut file = match std::fs::File::open(&path) {
+            Err(e) => panic!(e.to_string()),
+            Ok(file) => file,
+        };
+        let mut s = String::new();
+        match file.read_to_string(&mut s) {
+            Err(e) => exitout(e.to_string()),
+            Ok(_) => trace!("{}", s),
+        };
+        std::process::exit(1);
+*/
+//let mut entries = fs::read_dir("./cache").unwrap().map(|res| res.map(|e| e.path())).collect::<Result<Vec<_>, io::Error>>();
+
+
+//        let mut cache: Vec<String> = vec![];
+        let mut archivebundle: Vec<String> = vec![];
+
+        // If in offline mode
+        if matches.is_present("offline") {
+        // Get list of items in cache
+        let dir = match fs::read_dir("./cache") {
+            Err(e) => {error!("Error reading cache: {}", e); std::process::exit(e.raw_os_error().unwrap())},
+            Ok(items) => items
+        };
+
+        let mut cache: Vec<String> = vec![];
+        // Set cache so that entries can be pushed into it
+//        let mut cache: Vec<String> = vec![];
+        for entry in dir {
+            // Don't see how this could ever fail, famous last words
+            let item = match entry {
+                Err(e) => {error!("Error reading cache: {}", e); std::process::exit(e.raw_os_error().unwrap())},
+            // Item(n) is of type DirEntry
+                Ok(n) => n
+            };
+            // Try to read individual entry into a string so it can be push'd
+            let s = match fs::read_to_string(item.path()) {
+                Err(e) => {error!("Error reading cache item: {:#?}: {}", item.path(), e); std::process::exit(e.raw_os_error().unwrap_or(127))},
+                Ok(n) => n
+            };
+            archivebundle.push(s);
+            trace!("{:#?}", item);
+
+        }
+        // Number of cache entries read = vector.len()
+        trace!("Cache length: {:#?}", cache.len());
+        //std::process::exit(1);
+//        let mut archivebundle = cache;
+        }
+
         // Determine which list to use
         let addr = match matches.is_present("cr") {
             true => "https://lists.centos.org/pipermail/centos-cr-announce/",
@@ -221,12 +286,12 @@ fn main() -> Result<(), Error> {
             error!("Couldn't parse year from advisory.");
             std::process::exit(1);
         }
-
+        if !matches.is_present("offline") {
         // Query mailing list for advisory
         let archivelist = get_archive_list!(addr, a);
 
         // Data pulled from archivelist
-        let mut archivebundle: Vec<String> = vec![];
+//        let mut archivebundle: Vec<String> = vec![];
 
         trace!("Found archive links:\r\n{:#?}", archivelist);
         // Grab all archives, decode them, and dump into vector
@@ -235,12 +300,14 @@ fn main() -> Result<(), Error> {
             let mut response = handler(&link.to_string());
             debug!("Status {} for {}", response.status(), response.url());
             if response.status().as_u16() == 200 {
-                response.copy_to(&mut decoded)?;
+                //response.copy_to(&mut decoded)?;
+                response.copy_to(&mut decoded).unwrap();
                 let undecoded = gzdecode(decoded).unwrap();
                 archivebundle.push(undecoded);
             }
         }
-       
+       }
+
         trace!("Archive bundle found, length {}", archivebundle[0].len());
         // Uncomment to see full data from get_archive_list
         //trace!("Archive bundle: {:#?}", archivebundle);
@@ -248,8 +315,10 @@ fn main() -> Result<(), Error> {
             error!("No archives found");
             std::process::exit(1);
         }
-        
+      
+        let mut count = 0;
         let mut am = false;
+        let mut buf = String::new();
         let joinedbundle = archivebundle.join("");
         let decoded_split = joinedbundle.split("Subject:");
         // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
@@ -265,20 +334,28 @@ fn main() -> Result<(), Error> {
                 if advisorymatch == matches.value_of("advisory").unwrap_or("") {
                     let data = splitsort(&message);
                     debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                    buildline(data);
+//                    buildline(data);             
+                    buf.insert_str(0, &buildline(data));
+                    count += 1;
 
                 }
             }
-            am = match advisorymatch {
-                "None" => false,
-                _ => {
-                    if advisorymatch == matches.value_of("advisory").unwrap_or("") { std::process::exit(0); } else { false }
-                },
-            };
+            // There can be multiple entries with same name, f.e. CESA-2020:4076
+//            am = match advisorymatch {
+//               "None" => false,
+//                _ => {
+//                    if advisorymatch == matches.value_of("advisory").unwrap_or("") { std::process::exit(0); } else { false }
+//                },
+//            };
         }
-        if am == false {
+//        if am == false {
+        if count == 0 {
             error!("No matches found.");
             std::process::exit(1);
+        }
+        else {
+            info!("{}", buf);
+            std::process::exit(0);
         }
     }
     // Single message passed by URL
@@ -295,8 +372,9 @@ fn main() -> Result<(), Error> {
     	if ! response.status().is_success() {
     		exitout(format!("Error {} for {}", response.status(), request_url));
     	}
-    	let out = response.text()?;
+    	//let out = response.text()?;
+    	let out = response.text().unwrap();
         buildline(splitsort(&out));
     }
-	Ok(())
+    std::process::exit(0);
 }
