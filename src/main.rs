@@ -12,7 +12,7 @@ use flate2::read::GzDecoder;
 extern crate select;
 use select::{document::Document, predicate::Name};
 
-macro_rules! exitout {
+macro_rules! exit_out {
   ( $message: expr ) => {{
 		info!("{}", $message);
     std::process::exit(0);
@@ -26,13 +26,13 @@ macro_rules! exitout {
 }
 
 // Build final output (package list) from a mailing list entry
-fn buildline(data: std::collections::HashSet<&str>) -> String{
+fn build_line(data: std::collections::HashSet<&str>) -> String{
 	let mut newset = HashSet::new();
 	// Matches only package name assuming no nonconventional naming
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
-	trace!("buildline: {:#?}", data);
+	trace!("build_line: {:#?}", data);
     if data.len() == 0 { 
-        exitout!(String::from("Advisory appears to be empty."), 1);
+        exit_out!(String::from("Advisory appears to be empty."), 1);
     }
 	for item in data {
 		let packagename = re.captures(item).unwrap().get(1).map_or("", |m| m.as_str());
@@ -45,7 +45,7 @@ fn buildline(data: std::collections::HashSet<&str>) -> String{
     String::from(finalstr + " ")
 }
 
-fn splitsort(s: &str) -> HashSet<&str> {
+fn split_sort(s: &str) -> HashSet<&str> {
     let mut data = HashSet::new();
     // Messages are broadly split by two newlines between architectures, which gives the separate package groups
     // TODO: support multiple architectures
@@ -55,7 +55,7 @@ fn splitsort(s: &str) -> HashSet<&str> {
                 let hashsplit = line.split(" ");
                 for item in hashsplit {
                     if item.ends_with(".rpm") {
-                        trace!("splitsort: Inserting: {}", line);
+                        trace!("split_sort: Inserting: {}", line);
                         data.insert(item);
                     }
                 }
@@ -71,31 +71,31 @@ fn handler(ref mut r: &String) -> reqwest::Response {
     if let Err(e) = &response {
         if e.is_http() {
             match e.url() {
-                None => exitout!(String::from("No URL provided"), 1),
-                Some(url) => exitout!(format!("HTTP error making request to {}", url), 1),
+                None => exit_out!(String::from("No URL provided"), 1),
+                Some(url) => exit_out!(format!("HTTP error making request to {}", url), 1),
             }
         }
         if e.is_serialization() {
             match e.get_ref() {
-                Some(serde_error) => exitout!(format!("HTTP request error while parsing information {}", serde_error), 1),
-                None => exitout!(String::from("Unspecified serialization error during HTTP request"), 1),
+                Some(serde_error) => exit_out!(format!("HTTP request error while parsing information {}", serde_error), 1),
+                None => exit_out!(String::from("Unspecified serialization error during HTTP request"), 1),
             }
         }
         if e.is_redirect() {
-            exitout!(String::from("HTTP request error: caught in redirect loop"), 1);
+            exit_out!(String::from("HTTP request error: caught in redirect loop"), 1);
         }
         if e.is_client_error() {
-            exitout!(String::from("Client error during HTTP request"), 1);
+            exit_out!(String::from("Client error during HTTP request"), 1);
         }
         if e.is_server_error() {
-            exitout!(String::from("Server error during HTTP request"), 1);
+            exit_out!(String::from("Server error during HTTP request"), 1);
         }
         if format!("{}", e) == "relative URL without a base" {
-            exitout!(format!("HTTP request error: {}", e), 1);
+            exit_out!(format!("HTTP request error: {}", e), 1);
         }
     }
     match &response {
-        Err(e) => exitout!(format!("HTTP request error: {}", e), 1),
+        Err(e) => exit_out!(format!("HTTP request error: {}", e), 1),
         _ => (),
     };
     response.unwrap()
@@ -235,7 +235,7 @@ fn main() {
             .captures(matches.value_of("advisory")
             .unwrap_or(""))      
     {
-        None => { exitout!(String::from("Couldn't parse year from advisory."), 1); "" },
+        None => { exit_out!(String::from("Couldn't parse year from advisory."), 1); "" },
         Some(a) => a.get(1).map_or("", |m| m.as_str()),
     };
 
@@ -281,16 +281,16 @@ fn main() {
         if advisorymatch != "None" {
             trace!("Advisory found: {}", advisorymatch);
             if advisorymatch == matches.value_of("advisory").unwrap_or("") {
-                let data = splitsort(&message);
+                let data = split_sort(&message);
                 debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                buf.insert_str(0, &buildline(data));
+                buf.insert_str(0, &build_line(data));
                 count += 1;
             }
         }
     }
 
     match count {
-       0 => exitout!("No matches found.", 1),
-       _ => exitout!(buf, 0)
+       0 => exit_out!("No matches found.", 1),
+       _ => exit_out!(buf, 0)
     };
 }
