@@ -232,14 +232,9 @@ fn main() {
             .captures(matches.value_of("advisory")
             .unwrap_or(""))      
     {
-        None => "",
+        None => { exitout(String::from("Couldn't parse year from advisory.")); "" },
         Some(a) => a.get(1).map_or("", |m| m.as_str()),
     };
-
-    if a == "" {
-        error!("Couldn't parse year from advisory.");
-        std::process::exit(1);
-    }
 
     if !matches.is_present("offline") {
         // Query mailing list for advisory
