@@ -11,13 +11,11 @@ use env_logger::Env;
 use std::io::prelude::*;
 use std::str::from_utf8;
 use std::io;
+use std::fs;
 use flate2::read::GzDecoder;
 extern crate select;
 use select::document::Document;
 use select::predicate::Name;
-
-// new stuff
-use std::fs;
 
 fn exitout(arg: String) {
     error!("{}", arg);
@@ -104,7 +102,6 @@ fn handler(ref mut r: &String) -> reqwest::Response {
 fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     let mut gz = GzDecoder::new(&bytes[..]);
     let mut s = String::new();
-//    gz.read_to_string(&mut s)?;
     match gz.read_to_string(&mut s) {
         Ok(a) => 
             {
@@ -121,23 +118,6 @@ fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
 
 // Macro to pull a list of archives from the mailing list
 macro_rules! get_archive_list {
-    // This branch is no longer used now that year is parsed from advisory
-    ($url:expr) => {{
-        let resp = reqwest::get($url).unwrap();
-        assert!(resp.status().is_success());
-        let mut responsevec: Vec<String> = vec![];
-    // Get only links from downloadable archives
-    // Check only current year unless year is specified
-        let year = ((SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() / 31557600000) + 1970).to_string();
-        Document::from_read(resp)
-            .unwrap()
-            .find(Name("a"))
-            .filter_map(|n| n.attr("href"))
-            .filter(|l| l.contains(".txt.gz") || l.contains(".txt"))
-            .filter(|l| l.contains(&year))
-            .for_each(|x| responsevec.push($url.to_string() + x));
-        responsevec
-    }};
     ($url:expr, $year:expr) => {{
         let resp = reqwest::get($url).unwrap();
         assert!(resp.status().is_success());
