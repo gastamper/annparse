@@ -69,30 +69,30 @@ fn handler(ref mut r: &String) -> reqwest::Response {
         if e.is_http() {
             match e.url() {
                 None => exitout(String::from("No URL provided")),
-                Some(url) => exitout(format!("Error making request to {}", url)),
+                Some(url) => exitout(format!("HTTP error making request to {}", url)),
             }
         }
         if e.is_serialization() {
             match e.get_ref() {
-                Some(serde_error) => exitout(format!("Error parsing information {}", serde_error)),
-                None => exitout(String::from("Unspecified serialization error")),
+                Some(serde_error) => exitout(format!("HTTP request error while parsing information {}", serde_error)),
+                None => exitout(String::from("Unspecified serialization error during HTTP request")),
             }
         }
         if e.is_redirect() {
-            exitout(String::from("Caught in redirect loop"));
+            exitout(String::from("HTTP request error: caught in redirect loop"));
         }
         if e.is_client_error() {
-            exitout(String::from("Client error"));
+            exitout(String::from("Client error during HTTP request"));
         }
         if e.is_server_error() {
-            exitout(String::from("Server error"));
+            exitout(String::from("Server error during HTTP request"));
         }
         if format!("{}", e) == "relative URL without a base" {
-            exitout(format!("{}", e));
+            exitout(format!("HTTP request error: {}", e));
         }
     }
     match &response {
-        Err(e) => exitout(format!("{}", e)),
+        Err(e) => exitout(format!("HTTP request error: {}", e)),
         _ => (),
     };
     response.unwrap()
@@ -105,7 +105,7 @@ fn gzdecode(bytes: Vec<u8>) -> io::Result<String> {
     match gz.read_to_string(&mut s) {
         Ok(a) => 
             {
-                trace!("GZdecoded {}", a);
+                trace!("Decompressed {} bytes", a);
                 Ok(s)
             },
         Err(e) => 
