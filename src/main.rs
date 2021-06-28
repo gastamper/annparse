@@ -1,5 +1,5 @@
+use std::{io, fs, str::from_utf8, io::prelude::*, collections::HashSet};
 extern crate reqwest;
-use std::collections::HashSet;
 extern crate regex;
 use regex::Regex;
 extern crate clap;
@@ -8,14 +8,9 @@ use clap::{Arg, App};
 extern crate env_logger;
 extern crate flate2;
 use env_logger::Env;
-use std::io::prelude::*;
-use std::str::from_utf8;
-use std::io;
-use std::fs;
 use flate2::read::GzDecoder;
 extern crate select;
-use select::document::Document;
-use select::predicate::Name;
+use select::{document::Document, predicate::Name};
 
 macro_rules! exitout {
   ( $message: expr ) => {{
