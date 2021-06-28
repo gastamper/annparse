@@ -17,9 +17,17 @@ extern crate select;
 use select::document::Document;
 use select::predicate::Name;
 
-fn exitout(arg: String) {
-    error!("{}", arg);
-    std::process::exit(1);
+macro_rules! exitout {
+  ( $message: expr ) => {{
+		info!("{}", $message);
+    std::process::exit(0);
+  }};
+  ( $message: expr, $rc: expr ) => {{
+    match $rc {
+      0 => { info!("{}", $message); std::process::exit(0); },
+      _ => { error!("{}", $message); std::process::exit($rc); },
+    }
+  }};
 }
 
 // Build final output (package list) from a mailing list entry
@@ -29,7 +37,7 @@ fn buildline(data: std::collections::HashSet<&str>) -> String{
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
 	trace!("buildline: {:#?}", data);
     if data.len() == 0 { 
-        exitout(String::from("Advisory appears to be empty."));
+        exitout!(String::from("Advisory appears to be empty."), 1);
     }
 	for item in data {
 		let packagename = re.captures(item).unwrap().get(1).map_or("", |m| m.as_str());
@@ -68,31 +76,31 @@ fn handler(ref mut r: &String) -> reqwest::Response {
     if let Err(e) = &response {
         if e.is_http() {
             match e.url() {
-                None => exitout(String::from("No URL provided")),
-                Some(url) => exitout(format!("HTTP error making request to {}", url)),
+                None => exitout!(String::from("No URL provided"), 1),
+                Some(url) => exitout!(format!("HTTP error making request to {}", url), 1),
             }
         }
         if e.is_serialization() {
             match e.get_ref() {
-                Some(serde_error) => exitout(format!("HTTP request error while parsing information {}", serde_error)),
-                None => exitout(String::from("Unspecified serialization error during HTTP request")),
+                Some(serde_error) => exitout!(format!("HTTP request error while parsing information {}", serde_error), 1),
+                None => exitout!(String::from("Unspecified serialization error during HTTP request"), 1),
             }
         }
         if e.is_redirect() {
-            exitout(String::from("HTTP request error: caught in redirect loop"));
+            exitout!(String::from("HTTP request error: caught in redirect loop"), 1);
         }
         if e.is_client_error() {
-            exitout(String::from("Client error during HTTP request"));
+            exitout!(String::from("Client error during HTTP request"), 1);
         }
         if e.is_server_error() {
-            exitout(String::from("Server error during HTTP request"));
+            exitout!(String::from("Server error during HTTP request"), 1);
         }
         if format!("{}", e) == "relative URL without a base" {
-            exitout(format!("HTTP request error: {}", e));
+            exitout!(format!("HTTP request error: {}", e), 1);
         }
     }
     match &response {
-        Err(e) => exitout(format!("HTTP request error: {}", e)),
+        Err(e) => exitout!(format!("HTTP request error: {}", e), 1),
         _ => (),
     };
     response.unwrap()
@@ -232,7 +240,7 @@ fn main() {
             .captures(matches.value_of("advisory")
             .unwrap_or(""))      
     {
-        None => { exitout(String::from("Couldn't parse year from advisory.")); "" },
+        None => { exitout!(String::from("Couldn't parse year from advisory."), 1); "" },
         Some(a) => a.get(1).map_or("", |m| m.as_str()),
     };
 
@@ -285,12 +293,9 @@ fn main() {
             }
         }
     }
-    if count == 0 {
-        error!("No matches found.");
-        std::process::exit(1);
-    }
-    else {
-        info!("{}", buf);
-        std::process::exit(0);
-    }
+
+    match count {
+       0 => exitout!("No matches found.", 1),
+       _ => exitout!(buf, 0)
+    };
 }
