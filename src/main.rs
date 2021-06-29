@@ -191,7 +191,7 @@ fn main() {
     }
         
 
-    let mut archivebundle: Vec<String> = vec![];
+    let mut archive_bundle: Vec<String> = vec![];
 
     // If in offline mode
     if matches.is_present("offline") {
@@ -215,11 +215,11 @@ fn main() {
                             std::process::exit(e.raw_os_error().unwrap_or(127))},
                 Ok(n) => n
             };
-            archivebundle.push(s);
+            archive_bundle.push(s);
             trace!("{:#?}", item);
         }
         // Number of cache entries read = vector.len()
-        trace!("Cache length: {:#?}", archivebundle.len());
+        trace!("Cache length: {:#?}", archive_bundle.len());
     }
 
     // Determine which list to use
@@ -230,7 +230,7 @@ fn main() {
 
 
     // Parse year from advisory
-    let a = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
+    let year = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
             .unwrap()
             .captures(matches.value_of("advisory")
             .unwrap_or(""))      
@@ -241,11 +241,11 @@ fn main() {
 
     if !matches.is_present("offline") {
         // Query mailing list for advisory
-        let archivelist = get_archive_list!(addr, a);
-        // Data pulled from archivelist
-        trace!("Found archive links:\r\n{:#?}", archivelist);
+        let archive_list = get_archive_list!(addr, year);
+        // Data pulled from archive_list
+        trace!("Found archive links:\r\n{:#?}", archive_list);
         // Grab all archives, decode them, and dump into vector
-        for link in archivelist {
+        for link in archive_list {
             let mut decoded: Vec<u8> = vec![];
             let mut response = handler(&link.to_string());
             debug!("Status {} for {}", response.status(), response.url());
@@ -253,36 +253,36 @@ fn main() {
                 //response.copy_to(&mut decoded)?;
                 response.copy_to(&mut decoded).unwrap();
                 let undecoded = gzdecode(decoded).unwrap();
-                archivebundle.push(undecoded);
+                archive_bundle.push(undecoded);
             }
         }
     }
 
-    trace!("Archive bundle found, length {}", archivebundle[0].len());
+    trace!("Archive bundle found, length {}", archive_bundle[0].len());
     // Uncomment to see full data from get_archive_list
-    //trace!("Archive bundle: {:#?}", archivebundle);
-    if archivebundle.len() == 0 {
+    //trace!("Archive bundle: {:#?}", archive_bundle);
+    if archive_bundle.len() == 0 {
         error!("No archives found");
         std::process::exit(1);
     }
       
     let mut count = 0;
     let mut buf = String::new();
-    let joinedbundle = archivebundle.join("");
-    let decoded_split = joinedbundle.split("Subject:");
+    let joined_bundle = archive_bundle.join("");
+    let decoded_split = joined_bundle.split("Subject:");
     // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
-    let subjre = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
+    let subject_regex = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
     for message in decoded_split {
-        let smessage = subjre.captures(message);
-        let advisorymatch = match smessage {
+        let subject_regex_captures = subject_regex.captures(message);
+        let advisory_match = match subject_regex_captures {
             None => "None",
             Some(a) => a.get(2).map_or("None", |m| m.as_str()),
         };
-        if advisorymatch != "None" {
-            trace!("Advisory found: {}", advisorymatch);
-            if advisorymatch == matches.value_of("advisory").unwrap_or("") {
+        if advisory_match != "None" {
+            trace!("Advisory found: {}", advisory_match);
+            if advisory_match == matches.value_of("advisory").unwrap_or("") {
                 let data = split_sort(&message);
-                debug!("Advisory matched: {}, {}", advisorymatch, subjre.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
+                debug!("Advisory matched: {}, {}", advisory_match, subject_regex.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
                 buf.insert_str(0, &build_line(data));
                 count += 1;
             }
