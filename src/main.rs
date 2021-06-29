@@ -138,7 +138,6 @@ macro_rules! get_archive_list {
 }
 
 
-//fn main() -> Result<(),dyn Error> {
 fn main() {
     let matches = App::new("annparse")
                     .arg(Arg::with_name("url")
@@ -205,14 +204,14 @@ fn main() {
         for entry in dir {
             // Don't see how this could ever fail, famous last words
             let item = match entry {
-                Err(e) => {error!("Error reading cache: {}", e); std::process::exit(e.raw_os_error().unwrap())},
+                Err(e) => {exit_out!("Error reading cache folder: ".to_string() + &e.to_string(), e.raw_os_error().unwrap())},
                 // Item(n) is of type DirEntry
                 Ok(n) => n
             };
             // Try to read individual entry into a string so it can be push'd
             let s = match fs::read_to_string(item.path()) {
-                Err(e) => {error!("Error reading cache item: {:#?}: {}", item.path(), e); 
-                            std::process::exit(e.raw_os_error().unwrap_or(127))},
+                Err(e) => {exit_out!("Error reading cache item, ".to_string() + &e.to_string() + ": " + &item.path().to_str().unwrap().to_string(), 
+                            e.raw_os_error().unwrap_or(127))},
                 Ok(n) => n
             };
             archive_bundle.push(s);
@@ -235,7 +234,7 @@ fn main() {
             .captures(matches.value_of("advisory")
             .unwrap_or(""))      
     {
-        None => { exit_out!(String::from("Couldn't parse year from advisory."), 1); "" },
+        None => { exit_out!(String::from("Couldn't parse year from advisory."), 1); },
         Some(a) => a.get(1).map_or("", |m| m.as_str()),
     };
 
