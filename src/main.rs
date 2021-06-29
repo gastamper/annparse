@@ -222,7 +222,8 @@ fn main() {
                 Ok(n) => n
             };
             // Try to read individual entry into a string so it can be push'd
-            let s = match fs::read_to_string(item.path()) {
+            // TODO: fs::read should be match'd on its own to catch errors there
+            let s = match gzdecode(fs::read(item.path()).unwrap()) {
                 Err(e) => {exit_out!("Error reading cache item, ".to_string() + &e.to_string() + ": " + &item.path().to_str().unwrap().to_string(), 
                             e.raw_os_error().unwrap_or(127))},
                 Ok(n) => n
