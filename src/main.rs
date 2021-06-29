@@ -163,6 +163,13 @@ fn main() {
                     .short("o")
                     .long("offline")
                     .help("Offline mode (use local cache directory ./cache for archives)"))
+                    .arg(Arg::with_name("cache_path")
+                    .short("p")
+                    .long("cache_path")
+                    .help("Path to offline cache folder")
+                    .takes_value(true)
+                    .requires("offline")
+                    .default_value("./cache"))
                     .get_matches();
     let verbosity = match matches.occurrences_of("verbose") {
         0 => "info",
@@ -188,15 +195,21 @@ fn main() {
         error!("No advisory specified.");
         std::process::exit(1);
     }
-        
+ 
 
     let mut archive_bundle: Vec<String> = vec![];
 
     // If in offline mode
     if matches.is_present("offline") {
+        // default to ./cache if no cache_path argument given
+        let cache_path = match matches.is_present("cache_path") {
+            true => matches.value_of("cache_path").unwrap(),
+            false => "./cache",
+        };
+
         // Get list of items in cache
-        let dir = match fs::read_dir("./cache") {
-            Err(e) => {error!("Error reading cache: {}", e); std::process::exit(e.raw_os_error().unwrap())},
+        let dir = match fs::read_dir(cache_path) {
+            Err(e) => {error!("Error reading cache folder {}: {}", cache_path, e); std::process::exit(e.raw_os_error().unwrap())},
             Ok(items) => items
         };
 
