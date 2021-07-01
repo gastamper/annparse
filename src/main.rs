@@ -272,12 +272,12 @@ fn main() {
         }
     }
 
-    trace!("Archive bundle found, length {}", archive_bundle[0].len());
     // Uncomment to see full data from get_archive_list
     //trace!("Archive bundle: {:#?}", archive_bundle);
     if archive_bundle.len() == 0 {
         exit_out!("No archives found", 1);
     }
+    trace!("Archive bundle found, length {}", archive_bundle[0].len());
       
     let mut count = 0;
     let mut buf = String::new();
