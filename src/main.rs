@@ -236,12 +236,6 @@ fn main() {
         trace!("Cache length: {:#?}", archive_bundle.len());
     }
 
-    // Determine which list to use
-    let addr = match matches.is_present("cr") {
-        true => "https://lists.centos.org/pipermail/centos-cr-announce/",
-        false => "https://lists.centos.org/pipermail/centos-announce/",
-    };
-
 
     // Parse year from advisory
     let year = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
@@ -254,6 +248,11 @@ fn main() {
     };
 
     if !matches.is_present("offline") {
+        // Determine which list to use
+        let addr = match matches.is_present("cr") {
+            true => "https://lists.centos.org/pipermail/centos-cr-announce/",
+            false => "https://lists.centos.org/pipermail/centos-announce/",
+        };
         // Query mailing list for advisory
         let archive_list = get_archive_list!(addr, year);
         // Data pulled from archive_list
