@@ -187,36 +187,34 @@ fn main() {
             .filter(None, LevelFilter::Info).init();
     }
     else {
-    // Permit overriding builtin logging via command line
-    env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
+        // Permit overriding builtin logging via command line
+        env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
     }
    
     if !matches.is_present("advisory") {
-        error!("No advisory specified.");
-        std::process::exit(1);
+        exit_out!("No advisory specified.", 1);
     }
- 
 
     let mut archive_bundle: Vec<String> = vec![];
 
     fn build_offline(cache_path: &str) -> Vec<String> {
         let mut archive_bundle: Vec<String> = vec![];
         let dir = match fs::read_dir(cache_path) {
-            Err(e) => {error!("Error reading cache folder {}: {}", cache_path, e); std::process::exit(e.raw_os_error().unwrap())},
+            Err(e) => { exit_out!("Error reading cache folder ".to_string() + &cache_path.to_string() + ": " + &e.to_string(), e.raw_os_error().unwrap()) },
             Ok(items) => items
         };
         for entry in dir {
             // Don't see how this could ever fail, famous last words
             let item = match entry {
-                Err(e) => {exit_out!("Error reading cache folder: ".to_string() + &e.to_string(), e.raw_os_error().unwrap())},
+                Err(e) => { exit_out!("Error reading cache folder: ".to_string() + &e.to_string(), e.raw_os_error().unwrap()) },
                 // Item(n) is of type DirEntry
                 Ok(n) => n
             };
             // Try to read individual entry into a string so it can be push'd
             // TODO: fs::read should be match'd on its own to catch errors there
             let s = match gzdecode(fs::read(item.path()).unwrap()) {
-                Err(e) => {exit_out!("Error reading cache item, ".to_string() + &e.to_string() + ": " + &item.path().to_str().unwrap().to_string(), 
-                            e.raw_os_error().unwrap_or(127))},
+                Err(e) => { exit_out!("Error reading cache item, ".to_string() + &e.to_string() + ": " + &item.path().to_str().unwrap().to_string(), 
+                            e.raw_os_error().unwrap_or(127)) },
                 Ok(n) => n
             };
             archive_bundle.push(s);
