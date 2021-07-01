@@ -194,10 +194,20 @@ fn main() {
     if !matches.is_present("advisory") {
         exit_out!("No advisory specified.", 1);
     }
+    
+    // Parse year from advisory
+    let year = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
+            .unwrap()
+            .captures(matches.value_of("advisory")
+            .unwrap_or(""))      
+    {
+        None => { exit_out!(String::from("Couldn't parse year from advisory."), 1); },
+        Some(a) => a.get(1).map_or("", |m| m.as_str()),
+    };
 
     let mut archive_bundle: Vec<String> = vec![];
 
-    fn build_offline(cache_path: &str) -> Vec<String> {
+    fn build_offline(cache_path: &str, year: &str) -> Vec<String> {
         let mut archive_bundle: Vec<String> = vec![];
         let dir = match fs::read_dir(cache_path) {
             Err(e) => { exit_out!("Error reading cache folder ".to_string() + &cache_path.to_string() + ": " + &e.to_string(), e.raw_os_error().unwrap()) },
@@ -215,13 +225,23 @@ fn main() {
                 Err(e) => { exit_out!("Error reading cache item, ".to_string() + &e.to_string() + ": " + &item.path().to_str().unwrap().to_string(), 1) },
                 Ok(n) => n,
             };
-            let s = match gzdecode(item_path) {
+            // Build regex and year information to check neighboring years for late/early Dec/Jan CVEs
+            let regex = Regex::new(r"([0-9]{4})-(.+)").unwrap();
+            let e = item.file_name().to_string_lossy().into_owned();
+            let regex_captures = regex.captures(&e);
+            let year_int = year.parse::<i32>().unwrap();
+            let file_year = regex_captures.unwrap().get(1).map_or("", |m| m.as_str());
+            // Perform check, push to bundle if year applies
+            if file_year ==  year || file_year == (year_int + 1).to_string() || file_year == (year_int - 1).to_string() {
+              trace!("Year {} matched on file {}", year, e);
+              let s = match gzdecode(item_path) {
                 Err(e) => { exit_out!("Error reading cache item, ".to_string() + &e.to_string() + ": " + &item.path().to_str().unwrap().to_string(), 
                             e.raw_os_error().unwrap_or(127)) },
                 Ok(n) => n
-            };
-            archive_bundle.push(s);
-            trace!("{:#?}", item);
+              };
+              archive_bundle.push(s);
+              trace!("{:#?}", item);
+            }
         }
       archive_bundle
       }
@@ -233,20 +253,9 @@ fn main() {
             true => matches.value_of("cache_path").unwrap(),
             false => "./cache",
         };
-        archive_bundle = build_offline(cache_path);
+        archive_bundle = build_offline(cache_path, year);
         trace!("Cache length: {:#?}", archive_bundle.len());
     }
-
-
-    // Parse year from advisory
-    let year = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
-            .unwrap()
-            .captures(matches.value_of("advisory")
-            .unwrap_or(""))      
-    {
-        None => { exit_out!(String::from("Couldn't parse year from advisory."), 1); },
-        Some(a) => a.get(1).map_or("", |m| m.as_str()),
-    };
 
     if !matches.is_present("offline") {
         // Determine which list to use
