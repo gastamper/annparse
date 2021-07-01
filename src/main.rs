@@ -232,7 +232,7 @@ fn main() {
             let year_int = year.parse::<i32>().unwrap();
             let file_year = regex_captures.unwrap().get(1).map_or("", |m| m.as_str());
             // Perform check, push to bundle if year applies
-            if file_year ==  year || file_year == (year_int + 1).to_string() || file_year == (year_int - 1).to_string() {
+            if file_year == year || file_year == (year_int + 1).to_string() || file_year == (year_int - 1).to_string() {
               trace!("Year {} matched on file {}", year, e);
               let s = match gzdecode(item_path) {
                 Err(e) => { exit_out!("Error reading cache item, ".to_string() + &e.to_string() + ": " + &item.path().to_str().unwrap().to_string(), 
@@ -240,11 +240,11 @@ fn main() {
                 Ok(n) => n
               };
               archive_bundle.push(s);
-              trace!("{:#?}", item);
+              trace!("Pushed to archive_bundle: {:#?}", item); 
             }
         }
       archive_bundle
-      }
+    }
     
     // If in offline mode
     if matches.is_present("offline") {
