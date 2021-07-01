@@ -199,21 +199,12 @@ fn main() {
 
     let mut archive_bundle: Vec<String> = vec![];
 
-    // If in offline mode
-    if matches.is_present("offline") {
-        // default to ./cache if no cache_path argument given
-        let cache_path = match matches.is_present("cache_path") {
-            true => matches.value_of("cache_path").unwrap(),
-            false => "./cache",
-        };
-
-        // Get list of items in cache
+    fn build_offline(cache_path: &str) -> Vec<String> {
+        let mut archive_bundle: Vec<String> = vec![];
         let dir = match fs::read_dir(cache_path) {
             Err(e) => {error!("Error reading cache folder {}: {}", cache_path, e); std::process::exit(e.raw_os_error().unwrap())},
             Ok(items) => items
         };
-
-        // Set cache so that entries can be pushed into it
         for entry in dir {
             // Don't see how this could ever fail, famous last words
             let item = match entry {
@@ -231,7 +222,17 @@ fn main() {
             archive_bundle.push(s);
             trace!("{:#?}", item);
         }
-        // Number of cache entries read = vector.len()
+      archive_bundle
+      }
+    
+    // If in offline mode
+    if matches.is_present("offline") {
+        // default to ./cache if no cache_path argument given
+        let cache_path = match matches.is_present("cache_path") {
+            true => matches.value_of("cache_path").unwrap(),
+            false => "./cache",
+        };
+        archive_bundle = build_offline(cache_path);
         trace!("Cache length: {:#?}", archive_bundle.len());
     }
 
