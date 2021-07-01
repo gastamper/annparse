@@ -151,10 +151,9 @@ fn main() {
                       .help("verbosity level")
                       .multiple(true))
                     .arg(Arg::with_name("advisory")
-                      .short("a")
-                      .long("advisory")
                       .help("Advisory to query")
                       .required(true)
+                      .index(1)
                       .takes_value(true))
                     .arg(Arg::with_name("cr")
                       .short("c")
@@ -312,7 +311,14 @@ fn main() {
     }
 
     match count {
-       0 => exit_out!("No matches found.", 1),
+       0 =>  
+         exit_out!("No matches found".to_string() + 
+                  ( if matches.is_present("offline") == true {" in offline cache."} 
+                    else {
+                      if matches.is_present("cr") == false { " in CentOS-announce.  Consider checking CentOS-CR with -c flag." } 
+                      else {" in CentOS-announce or CentOS-CR."} 
+                    }
+                  ), 1),
        _ => exit_out!(buf, 0)
     };
 }
