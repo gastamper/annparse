@@ -275,8 +275,7 @@ fn main() {
     // Uncomment to see full data from get_archive_list
     //trace!("Archive bundle: {:#?}", archive_bundle);
     if archive_bundle.len() == 0 {
-        error!("No archives found");
-        std::process::exit(1);
+        exit_out!("No archives found", 1);
     }
       
     let mut count = 0;
