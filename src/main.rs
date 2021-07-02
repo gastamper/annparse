@@ -26,23 +26,24 @@ macro_rules! exit_out {
 }
 
 // Build final output (package list) from a mailing list entry
-fn build_line(data: std::collections::HashSet<&str>) -> String{
+fn build_line(data: std::collections::HashSet<&str>) -> Vec<&str> {
 	let mut newset = HashSet::new();
 	// Matches only package name assuming no nonconventional naming
 	let re = Regex::new(r"(.*)(?:(-[^-]*-[^-]*$))").unwrap();
 	trace!("build_line: {:#?}", data);
-    if data.len() == 0 { 
-        exit_out!(String::from("Advisory appears to be empty."), 1);
-    }
+  if data.len() == 0 { 
+    exit_out!(String::from("Advisory appears to be empty."), 1);
+  }
 	for item in data {
 		let packagename = re.captures(item).unwrap().get(1).map_or("", |m| m.as_str());
 		debug!("Got package: {}", packagename);
 		newset.insert(packagename);
 	}
-	let finalstr = newset.into_iter().collect::<Vec<&str>>().join(" ");
-	debug!("Final package list: {}", finalstr);
-    // Pad end in case another advisory follows
-    String::from(finalstr + " ")
+  // Build & sort final vector for comparison against existing entries later
+	let mut built_vec = newset.into_iter().collect::<Vec<&str>>();
+	debug!("Final package list: {}", built_vec.join(" "));
+  &built_vec.sort();
+  built_vec
 }
 
 fn split_sort(s: &str) -> HashSet<&str> {
@@ -268,9 +269,9 @@ fn main() {
             let mut response = handler(&link.to_string());
             debug!("Status {} for {}", response.status(), response.url());
             if response.status().as_u16() == 200 {
-                //response.copy_to(&mut decoded)?;
                 response.copy_to(&mut decoded).unwrap();
                 let undecoded = gzdecode(decoded).unwrap();
+                trace!("Pushing to bundle: {}",  response.url());
                 archive_bundle.push(undecoded);
             }
         }
@@ -288,24 +289,33 @@ fn main() {
       trace!("Archive bundle built, size {}", bundle_len);
     }
       
-    let mut count = 0;
-    let mut buf = String::new();
+    let (mut count, mut message_count) = (0, 0);
+		let mut buf = vec![];
     // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
     let subject_regex = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] (CE[S|E|B]A-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
     // Check each message in the list, having been split based on Subject line
-    for message in archive_bundle.join("").split("Subject:") {
+    let test = archive_bundle.join("");
+    trace!("Individual advisories: {:#?}", test.split("Subject:").count());
+    let bundle_split = test.split("Subject:");
+    for message in bundle_split {
+        message_count += 1;
+        trace!("Checking message {}", message_count);
         let advisory_match = match subject_regex.captures(message) {
             None => "None",
             // index 2 is advisory name; 3 is description
             Some(a) => a.get(2).map_or("None", |m| m.as_str()),
         };
+        // Confirm advisory matches; if so, push if not already in vector
         if advisory_match != "None" {
-            trace!("Advisory found: {}", advisory_match);
+            trace!("Advisory found at count {}: {}", count, advisory_match);
             if advisory_match == matches.value_of("advisory").unwrap_or("") {
-                let data = split_sort(&message);
-                debug!("Advisory matched: {}, {}", advisory_match, subject_regex.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
-                buf.insert_str(0, &build_line(data));
-                count += 1;
+               let data = split_sort(&message);
+               debug!("Advisory matched: {}, {}", advisory_match, subject_regex.captures(message).unwrap().get(3).map_or("", |m| m.as_str()));
+               let built = build_line(data);
+               // Push if not duplicate
+               if !buf.contains(&built) { buf.push(built); }
+               else { trace!("Discarding duplicate entry {}", (count + 1)); }
+               count += 1;
             }
         }
     }
@@ -319,6 +329,7 @@ fn main() {
                       else {" in CentOS-announce or CentOS-CR."} 
                     }
                   ), 1),
-       _ => exit_out!(buf, 0)
+       // Hopefully(?) there should only ever be a single entry in the vector on success
+       _ => exit_out!(buf.to_owned()[0].join(" "), 0)
     };
 }
