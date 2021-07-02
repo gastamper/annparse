@@ -281,7 +281,12 @@ fn main() {
     if archive_bundle.len() == 0 {
         exit_out!("No archives found.", 1);
     }
-    trace!("Archive bundle found, length {}", archive_bundle[0].len());
+    
+    if verbosity == "trace" {
+      let mut bundle_len = 0;
+      for item in &archive_bundle { bundle_len += item.len(); };
+      trace!("Archive bundle built, size {}", bundle_len);
+    }
       
     let mut count = 0;
     let mut buf = String::new();
