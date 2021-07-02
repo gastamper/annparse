@@ -190,17 +190,13 @@ fn main() {
         env_logger::from_env(Env::default().default_filter_or(format!("{},{}", verbosity, baseloglevel))).init();
     }
    
-    if !matches.is_present("advisory") {
-        exit_out!("No advisory specified.", 1);
-    }
-    
     // Parse year from advisory
-    let year = match Regex::new(r"^.*-([0-9]{4}):[0-9]{4}$")
+    let year = match Regex::new(r"^CE[S|E|B]A-([0-9]{4}):[0-9]{4}$")
             .unwrap()
             .captures(matches.value_of("advisory")
             .unwrap_or(""))      
     {
-        None => { exit_out!(String::from("Couldn't parse year from advisory."), 1); },
+        None => { exit_out!(String::from("Couldn't parse advisory; check format."), 1); },
         Some(a) => a.get(1).map_or("", |m| m.as_str()),
     };
 
@@ -290,7 +286,7 @@ fn main() {
     let mut count = 0;
     let mut buf = String::new();
     // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
-    let subject_regex = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] (CE[A-Z]{2}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
+    let subject_regex = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] (CE[S|E|B]A-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
     // Check each message in the list, having been split based on Subject line
     for message in archive_bundle.join("").split("Subject:") {
         let advisory_match = match subject_regex.captures(message) {
