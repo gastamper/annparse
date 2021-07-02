@@ -283,20 +283,19 @@ fn main() {
     // Uncomment to see full data from get_archive_list
     //trace!("Archive bundle: {:#?}", archive_bundle);
     if archive_bundle.len() == 0 {
-        exit_out!("No archives found", 1);
+        exit_out!("No archives found.", 1);
     }
     trace!("Archive bundle found, length {}", archive_bundle[0].len());
       
     let mut count = 0;
     let mut buf = String::new();
-    let joined_bundle = archive_bundle.join("");
-    let decoded_split = joined_bundle.split("Subject:");
     // Regex to parse `[CentOS-Announce|Centos-CR] CE**-YYYY:1234 advisory-title` from list 
-    let subject_regex = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] ([A-Z]{4}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
-    for message in decoded_split {
-        let subject_regex_captures = subject_regex.captures(message);
-        let advisory_match = match subject_regex_captures {
+    let subject_regex = Regex::new(r" \[(\w+-\w+|\w+-\w+-\w+)\] (CE[A-Z]{2}-[0-9]{4}:[0-9]{4})(?:\W)(.*)").unwrap();
+    // Check each message in the list, having been split based on Subject line
+    for message in archive_bundle.join("").split("Subject:") {
+        let advisory_match = match subject_regex.captures(message) {
             None => "None",
+            // index 2 is advisory name; 3 is description
             Some(a) => a.get(2).map_or("None", |m| m.as_str()),
         };
         if advisory_match != "None" {
